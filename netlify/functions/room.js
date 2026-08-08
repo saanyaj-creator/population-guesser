@@ -218,4 +218,3 @@ exports.handler = async (event) => {
           return json({ error: 'Server error: ' + e.message }, 500);
     }
 };
-};
