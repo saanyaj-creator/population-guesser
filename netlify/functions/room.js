@@ -133,7 +133,7 @@ exports.handler = async (event) => {
     connectLambda(event);
     if (event.httpMethod === 'OPTIONS') return json({});
 
-    const store = getStore('rooms');
+    const store = getStore({ name: 'rooms', consistency: 'strong' });
     let body = {};
     if (event.httpMethod === 'POST' && event.body) {
           try { body = JSON.parse(event.body); } catch (e) { return json({ error: 'Bad JSON' }, 400); }
