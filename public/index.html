@@ -93,6 +93,11 @@
   #mapContainer svg { width: 100%; height: auto; border-radius: 10px; background: #0b1a2e; }
   .map-note { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
   .error-box { background: rgba(248,113,113,0.15); color: var(--bad); padding: 12px 16px; border-radius: 10px; margin: 14px 0; font-size: 0.9rem; }
+  .leaderboard-section { margin-top: 26px; }
+  .leaderboard-section h3 { margin: 0 0 10px 0; font-size: 1rem; }
+  table.leaderboard { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  table.leaderboard th, table.leaderboard td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-2); }
+  table.leaderboard th { color: var(--muted); font-weight: 600; }
   .back-link { color: var(--muted); font-size: 0.85rem; cursor: pointer; text-decoration: underline; }
   @media (max-width: 720px) { .layout { flex-direction: column; } }
 </style>
@@ -132,6 +137,95 @@ function parseGuess(raw) {
   if (!cleaned) return null;
   const val = parseFloat(cleaned);
   return isNaN(val) ? null : val;
+}
+
+// ---------------- Leaderboard / percentile (per-device, via localStorage) ----------------
+// Each player's browser keeps its own history of finished games, same as the
+// offline version. This isn't a global leaderboard across everyone who plays
+// online — there's no account system — it's "how does this game compare to
+// your past games on this device," which is what the offline version showed.
+const LB_KEY = 'popGuesserOnlineHistory_v1';
+let storageAvailable = false;
+try {
+  localStorage.setItem('__popgame_test__', '1');
+  localStorage.removeItem('__popgame_test__');
+  storageAvailable = true;
+} catch (e) {
+  storageAvailable = false;
+}
+let memoryHistory = [];
+
+function loadHistory() {
+  if (!storageAvailable) return memoryHistory.slice();
+  try { return JSON.parse(localStorage.getItem(LB_KEY) || '[]'); } catch (e) { return []; }
+}
+
+function saveGameRecord(state, isSolo, myId, oppId) {
+  const players = [];
+  const me = state.players[myId];
+  const meRounds = state.history.filter(h => h.playerId === myId).length;
+  players.push({ name: me.name, totalScore: me.totalScore, avg: meRounds ? Math.round(me.totalScore / meRounds) : 0 });
+  if (!isSolo) {
+    const opp = state.players[oppId];
+    const oppRounds = state.history.filter(h => h.playerId === oppId).length;
+    players.push({ name: opp.name, totalScore: opp.totalScore, avg: oppRounds ? Math.round(opp.totalScore / oppRounds) : 0 });
+  }
+  const record = { date: new Date().toISOString(), mode: isSolo ? 'solo' : 'duo', rounds: state.round, players: players };
+  let history = loadHistory();
+  history.push(record);
+  if (history.length > 200) history = history.slice(-200);
+  if (storageAvailable) {
+    try { localStorage.setItem(LB_KEY, JSON.stringify(history)); } catch (e) { storageAvailable = false; memoryHistory = history; }
+  } else {
+    memoryHistory = history;
+  }
+  return { record: record, history: history };
+}
+
+function renderPercentileHtml(myName, myScore, history) {
+  const pastRecords = history.slice(0, -1);
+  const pastScores = [];
+  pastRecords.forEach(r => r.players.forEach(p => pastScores.push(p.totalScore)));
+  let html = '';
+  if (pastScores.length === 0) {
+    html += '<p class="note">This is your first recorded game on this device — nothing to compare yet. Play more games and this will show how today\'s score stacks up!</p>';
+  } else {
+    const pct = Math.round(100 * pastScores.filter(s => s <= myScore).length / pastScores.length);
+    html += '<p class="note"><b>' + myName + '</b>: ' + myScore + ' points — better than ' + pct + '% of ' + pastScores.length + ' past game scores recorded on this device.</p>';
+  }
+  if (!storageAvailable) {
+    html += '<p class="note">Note: this browser isn\'t persisting saved games, so comparisons only cover games played since you last opened this page. Use "Export Game History" to keep a permanent copy.</p>';
+  }
+  return html;
+}
+
+function renderLeaderboardHtml(history) {
+  const flat = [];
+  history.forEach(r => r.players.forEach(p => flat.push({ date: r.date, mode: r.mode, name: p.name, score: p.totalScore })));
+  flat.sort((a, b) => b.score - a.score);
+  const top = flat.slice(0, 5);
+  if (top.length === 0) return '';
+  const rows = top.map(r => (
+    '<tr><td>' + new Date(r.date).toLocaleDateString() + '</td><td>' + r.name + '</td><td>' + r.mode + '</td><td>' + r.score + '</td></tr>'
+  )).join('');
+  return '<table class="leaderboard"><thead><tr><th>Date</th><th>Player</th><th>Mode</th><th>Score</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function exportHistory() {
+  try {
+    const history = loadHistory();
+    const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'population-game-history.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Sorry, this browser would not let the file download.');
+  }
 }
 
 // ---------------- Router ----------------
@@ -530,10 +624,21 @@ function renderEnded(state) {
     '</div>';
   html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
     '<p class="map-note">Dots are placed by each country\'s approximate center; green = very close, teal = decent, red = far off.</p></div>';
+
+  const saved = saveGameRecord(state, isSolo, myId, oppId);
+  html += '<div class="leaderboard-section">' +
+    '<h3>How this game compares</h3>' +
+    renderPercentileHtml(me.name, me.totalScore, saved.history) +
+    renderLeaderboardHtml(saved.history) +
+    '<div class="actions" style="margin-top:14px;"><button class="btn btn-secondary" id="exportHistoryBtn" type="button">Export Game History</button></div>' +
+    '<p class="map-note">Your game history is saved in this browser only — it won\'t follow you to another device.</p>' +
+    '</div>';
+
   html += '<div class="actions" style="margin-top:24px;"><button class="btn" id="playAgainBtn">Play Again</button></div>';
 
   app.innerHTML = html;
   renderMap(state, myId);
+  document.getElementById('exportHistoryBtn').addEventListener('click', exportHistory);
   document.getElementById('playAgainBtn').addEventListener('click', () => {
     history.replaceState(null, '', location.pathname);
     myPlayerId = null;
