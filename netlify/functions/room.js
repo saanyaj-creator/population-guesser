@@ -103,6 +103,7 @@ function publicState(state) {
     round: state.round,
     maxRounds: state.maxRounds,
     status: state.status,
+    mode: state.mode || 'duo',
     players: state.players,
     history: state.history,
     roundDeadline: state.roundDeadline,
@@ -143,6 +144,7 @@ export default async (req, context) => {
   try {
     if (action === 'create') {
       const name = String(body.name || 'Player 1').slice(0, 24) || 'Player 1';
+      const mode = body.mode === 'solo' ? 'solo' : 'duo';
       let roomId;
       // avoid (very unlikely) collisions
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -153,6 +155,7 @@ export default async (req, context) => {
       const state = {
         roomId: roomId,
         createdAt: Date.now(),
+        mode: mode,
         order: shuffle(COUNTRIES.map((_, i) => i)),
         orderIdx: 0,
         round: 0,
@@ -163,6 +166,10 @@ export default async (req, context) => {
         history: [],
         status: 'waiting'
       };
+      // Solo games have no one to wait for — start round 1 immediately.
+      // The round-resolution logic below already works for any number of
+      // players since it just checks every current player has answered.
+      if (mode === 'solo') startRound(state);
       await store.setJSON(roomId, state);
       return json({ roomId: roomId, playerId: 'p1', state: publicState(state) });
     }
@@ -209,6 +216,15 @@ export default async (req, context) => {
       }
       resolveRoundIfNeeded(state);
       advanceIfRevealDone(state);
+      await store.setJSON(roomId, state);
+      return json({ state: publicState(state) });
+    }
+
+    if (action === 'end') {
+      const roomId = String(body.roomId || '').toUpperCase().trim();
+      const state = await store.get(roomId, { type: 'json' });
+      if (!state) return json({ error: 'Room not found.' }, 404);
+      state.status = 'ended';
       await store.setJSON(roomId, state);
       return json({ state: publicState(state) });
     }

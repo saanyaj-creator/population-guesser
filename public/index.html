@@ -1,548 +1,567 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Population Guesser</title>
-  <style>
-      :root {
-            --bg: #0f1220; --panel: #1a1e33; --panel-2: #232847; --accent: #5eead4; --accent-2: #f472b6;
-            --text: #f4f4f8; --muted: #9ca3af; --good: #4ade80; --bad: #f87171;
-      }
-      * { box-sizing: border-box; }
-      body {
-            margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(135deg, #0f1220, #1a1e33); color: var(--text);
-            min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 24px;
-      }
-      .layout { display: flex; gap: 24px; width: 100%; max-width: 1200px; align-items: flex-start; flex-wrap: wrap; }
-      .card { background: var(--panel); border-radius: 16px; padding: 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
-      .main-card { flex: 3 1 480px; min-width: 340px; }
-      .history-card { flex: 2 1 380px; min-width: 320px; }
-      h1 { margin: 0 0 4px 0; font-size: 1.6rem; }
-      .subtitle { color: var(--muted); margin: 0 0 20px 0; font-size: 0.95rem; }
-      .country-name { font-size: 2.1rem; font-weight: 700; margin: 18px 0 6px 0; }
-      .round-label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; }
-      .timer-display { margin-top: 8px; font-size: 1.3rem; font-weight: 800; color: var(--accent); }
-      .timer-display.low { color: var(--bad); }
-      input[type="text"] {
-            flex: 1; padding: 14px 16px; border-radius: 10px; border: 2px solid var(--panel-2);
-            background: #0d0f1c; color: var(--text); font-size: 1.1rem; min-width: 0;
-      }
-      input[type="text"]:focus { outline: none; border-color: var(--accent); }
-      button { font-family: inherit; }
-      .btn {
-            padding: 14px 22px; border-radius: 10px; border: none; background: var(--accent);
-            color: #05261f; font-weight: 700; font-size: 1rem; cursor: pointer;
-      }
-      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .btn-secondary { background: var(--panel-2); color: var(--text); }
-      .guess-row { display: flex; gap: 10px; margin-top: 14px; }
-      .quick-multiply { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-      .quick-multiply-label { color: var(--muted); font-size: 0.8rem; }
-      .btn-chip { padding: 6px 12px; border-radius: 20px; border: 1px solid #2f355a; background: #171b30; color: var(--text); font-size: 0.8rem; cursor: pointer; }
-      .btn-chip-clear { background: transparent; color: var(--muted); }
-      .player-box { background: var(--panel-2); border-radius: 12px; padding: 14px; margin-top: 14px; border: 2px solid transparent; }
-      .player-box.answered { border-color: var(--accent); opacity: 0.8; }
-      .player-box-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: flex; justify-content: space-between; }
-      .waiting-note { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
-      .result { margin-top: 22px; padding: 18px; border-radius: 12px; background: var(--panel-2); display: none; }
-      .result.show { display: block; }
-      .result-player { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #2f355a; }
-      .result-player:last-child { margin: 0; padding: 0; border: none; }
-      .result-player-name { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; }
-      .result-score { font-size: 1.8rem; font-weight: 800; }
-      .result-detail { color: var(--muted); margin-top: 4px; font-size: 0.9rem; line-height: 1.5; }
-      .result-detail b { color: var(--text); }
-      .winner-tag { display: inline-block; margin-left: 8px; font-size: 0.7rem; background: var(--good); color: #05261f; padding: 2px 8px; border-radius: 20px; font-weight: 700; }
-      .actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
-      .stats-row { display: flex; gap: 16px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--panel-2); flex-wrap: wrap; }
-      .stats-group { flex: 1; min-width: 140px; }
-      .stats-group-name { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
-      .stats-group-values { display: flex; gap: 14px; }
-      .stat { flex: 1; text-align: center; }
-      .stat-value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
-      .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
-      .history-card h2 { margin: 0 0 14px 0; font-size: 1.1rem; }
-      .chart-wrap { position: relative; max-height: 340px; overflow-y: auto; padding-right: 4px; }
-      .chart-empty { color: var(--muted); font-size: 0.85rem; }
-      .chart-row { margin-bottom: 14px; }
-      .chart-row-label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; gap: 8px; }
-      .chart-row-label .name { font-weight: 600; }
-      .chart-row-label .pct { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
-      .chart-bar-track { position: relative; background: #0d0f1c; border-radius: 6px; height: 16px; margin-bottom: 4px; overflow: hidden; }
-      .chart-bar-fill { position: absolute; top: 0; left: 0; bottom: 0; border-radius: 6px; }
-      .history-list { margin-top: 18px; max-height: 220px; overflow-y: auto; }
-      .history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--panel-2); font-size: 0.88rem; gap: 8px; }
-      .history-item .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-      .history-item .pts { font-weight: 700; color: var(--accent); white-space: nowrap; }
-      .empty-note { color: var(--muted); font-size: 0.85rem; margin-top: 10px; }
-      .mode-select { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; }
-      .mode-btn { flex: 1; min-width: 160px; padding: 18px; border-radius: 12px; border: 2px solid var(--panel-2); background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 1rem; font-weight: 700; }
-      .mode-btn:hover { border-color: var(--accent); }
-      .name-row input { padding: 12px 14px; border-radius: 8px; border: 2px solid var(--panel-2); background: #0d0f1c; color: var(--text); font-size: 0.95rem; width: 100%; margin: 10px 0; }
-      .note { color: var(--muted); font-size: 0.85rem; margin: 8px 0 0 0; }
-      .link-box { display: flex; gap: 8px; margin: 12px 0; }
-      .link-box input { flex: 1; }
-      .spinner-note { color: var(--accent); font-size: 0.9rem; margin-top: 14px; }
-      .end-stats { display: flex; gap: 16px; margin-top: 20px; flex-wrap: wrap; }
-      .end-player-card { flex: 1; min-width: 200px; background: var(--panel-2); border-radius: 12px; padding: 18px; }
-      .end-player-card .big-score { font-size: 2.2rem; font-weight: 800; color: var(--accent); }
-      .winner-banner { margin-top: 18px; padding: 12px 16px; border-radius: 10px; background: rgba(74,222,128,0.15); color: var(--good); font-weight: 700; text-align: center; }
-      #mapContainer svg { width: 100%; height: auto; border-radius: 10px; background: #0b1a2e; }
-      .map-note { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
-      .error-box { background: rgba(248,113,113,0.15); color: var(--bad); padding: 12px 16px; border-radius: 10px; margin: 14px 0; font-size: 0.9rem; }
-      .back-link { color: var(--muted); font-size: 0.85rem; cursor: pointer; text-decoration: underline; }
-      @media (max-width: 720px) { .layout { flex-direction: column; } }
-    </style>
-  </head>
-  <body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Population Guesser</title>
+<style>
+  :root {
+    --bg: #0f1220; --panel: #1a1e33; --panel-2: #232847; --accent: #5eead4; --accent-2: #f472b6;
+    --text: #f4f4f8; --muted: #9ca3af; --good: #4ade80; --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(135deg, #0f1220, #1a1e33); color: var(--text);
+    min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 24px;
+  }
+  .layout { display: flex; gap: 24px; width: 100%; max-width: 1200px; align-items: flex-start; flex-wrap: wrap; }
+  .card { background: var(--panel); border-radius: 16px; padding: 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+  .main-card { flex: 3 1 480px; min-width: 340px; }
+  .history-card { flex: 2 1 380px; min-width: 320px; }
+  h1 { margin: 0 0 4px 0; font-size: 1.6rem; }
+  .subtitle { color: var(--muted); margin: 0 0 20px 0; font-size: 0.95rem; }
+  .country-name { font-size: 2.1rem; font-weight: 700; margin: 18px 0 6px 0; }
+  .round-label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .timer-display { margin-top: 8px; font-size: 1.3rem; font-weight: 800; color: var(--accent); }
+  .timer-display.low { color: var(--bad); }
+  input[type="text"] {
+    flex: 1; padding: 14px 16px; border-radius: 10px; border: 2px solid var(--panel-2);
+    background: #0d0f1c; color: var(--text); font-size: 1.1rem; min-width: 0;
+  }
+  input[type="text"]:focus { outline: none; border-color: var(--accent); }
+  button { font-family: inherit; }
+  .btn {
+    padding: 14px 22px; border-radius: 10px; border: none; background: var(--accent);
+    color: #05261f; font-weight: 700; font-size: 1rem; cursor: pointer;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--panel-2); color: var(--text); }
+  .guess-row { display: flex; gap: 10px; margin-top: 14px; }
+  .quick-multiply { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .quick-multiply-label { color: var(--muted); font-size: 0.8rem; }
+  .btn-chip { padding: 6px 12px; border-radius: 20px; border: 1px solid #2f355a; background: #171b30; color: var(--text); font-size: 0.8rem; cursor: pointer; }
+  .btn-chip-clear { background: transparent; color: var(--muted); }
+  .player-box { background: var(--panel-2); border-radius: 12px; padding: 14px; margin-top: 14px; border: 2px solid transparent; }
+  .player-box.answered { border-color: var(--accent); opacity: 0.8; }
+  .player-box-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .waiting-note { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+  .result { margin-top: 22px; padding: 18px; border-radius: 12px; background: var(--panel-2); display: none; }
+  .result.show { display: block; }
+  .result-player { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #2f355a; }
+  .result-player:last-child { margin: 0; padding: 0; border: none; }
+  .result-player-name { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; }
+  .result-score { font-size: 1.8rem; font-weight: 800; }
+  .result-detail { color: var(--muted); margin-top: 4px; font-size: 0.9rem; line-height: 1.5; }
+  .result-detail b { color: var(--text); }
+  .winner-tag { display: inline-block; margin-left: 8px; font-size: 0.7rem; background: var(--good); color: #05261f; padding: 2px 8px; border-radius: 20px; font-weight: 700; }
+  .actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .stats-row { display: flex; gap: 16px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--panel-2); flex-wrap: wrap; }
+  .stats-group { flex: 1; min-width: 140px; }
+  .stats-group-name { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+  .stats-group-values { display: flex; gap: 14px; }
+  .stat { flex: 1; text-align: center; }
+  .stat-value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+  .history-card h2 { margin: 0 0 14px 0; font-size: 1.1rem; }
+  .chart-wrap { position: relative; max-height: 340px; overflow-y: auto; padding-right: 4px; }
+  .chart-empty { color: var(--muted); font-size: 0.85rem; }
+  .chart-row { margin-bottom: 14px; }
+  .chart-row-label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; gap: 8px; }
+  .chart-row-label .name { font-weight: 600; }
+  .chart-row-label .pct { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+  .chart-bar-track { position: relative; background: #0d0f1c; border-radius: 6px; height: 16px; margin-bottom: 4px; overflow: hidden; }
+  .chart-bar-fill { position: absolute; top: 0; left: 0; bottom: 0; border-radius: 6px; }
+  .history-list { margin-top: 18px; max-height: 220px; overflow-y: auto; }
+  .history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--panel-2); font-size: 0.88rem; gap: 8px; }
+  .history-item .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .history-item .pts { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .empty-note { color: var(--muted); font-size: 0.85rem; margin-top: 10px; }
+  .mode-select { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; }
+  .mode-btn { flex: 1; min-width: 160px; padding: 18px; border-radius: 12px; border: 2px solid var(--panel-2); background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 1rem; font-weight: 700; }
+  .mode-btn:hover { border-color: var(--accent); }
+  .mode-btn.active { border-color: var(--accent); background: var(--panel); }
+  .name-row input { padding: 12px 14px; border-radius: 8px; border: 2px solid var(--panel-2); background: #0d0f1c; color: var(--text); font-size: 0.95rem; width: 100%; margin: 10px 0; }
+  .note { color: var(--muted); font-size: 0.85rem; margin: 8px 0 0 0; }
+  .link-box { display: flex; gap: 8px; margin: 12px 0; }
+  .link-box input { flex: 1; }
+  .spinner-note { color: var(--accent); font-size: 0.9rem; margin-top: 14px; }
+  .end-stats { display: flex; gap: 16px; margin-top: 20px; flex-wrap: wrap; }
+  .end-player-card { flex: 1; min-width: 200px; background: var(--panel-2); border-radius: 12px; padding: 18px; }
+  .end-player-card .big-score { font-size: 2.2rem; font-weight: 800; color: var(--accent); }
+  .winner-banner { margin-top: 18px; padding: 12px 16px; border-radius: 10px; background: rgba(74,222,128,0.15); color: var(--good); font-weight: 700; text-align: center; }
+  #mapContainer svg { width: 100%; height: auto; border-radius: 10px; background: #0b1a2e; }
+  .map-note { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
+  .error-box { background: rgba(248,113,113,0.15); color: var(--bad); padding: 12px 16px; border-radius: 10px; margin: 14px 0; font-size: 0.9rem; }
+  .back-link { color: var(--muted); font-size: 0.85rem; cursor: pointer; text-decoration: underline; }
+  @media (max-width: 720px) { .layout { flex-direction: column; } }
+</style>
+</head>
+<body>
 
-    <div class="layout">
-        <div class="card main-card">
-              <h1>Population Guesser</h1>
-            <p class="subtitle">Guess the population of the country shown. The closer you are, the more points you score.</p>
-        
-            <div id="app"></div>
-        </div>
-    
-      <div class="card history-card" id="historyCard" style="display:none;">
-          <h2>Guess History</h2>
-          <div class="chart-wrap" id="historyChart"><div class="chart-empty">Guesses will show up here as you play.</div></div>
-          <div class="history-list" id="historyList"><div class="empty-note">Guesses will show up here as you play.</div></div>
-      </div>
-    </div>
-  
-  <script>
-    const CENTROIDS = {
-      "Abkhazia":[41.05,43.05],"Afghanistan":[66.59,34.13],"Albania":[20.06,41.14],"Algeria":[2.66,28.35],"American Samoa (United States)":[-170.7,-14.3],"Andorra":[1.58,42.55],"Angola":[17.65,-12.17],"Anguilla (United Kingdom)":[-63.06,18.22],"Antigua and Barbuda":[-61.79,17.07],"Argentina":[-64.53,-35.7],
-      "Armenia":[45.05,40.18],"Artsakh":[46.75,39.8],"Aruba (Netherlands)":[-69.97,12.52],"Australia":[134.02,-25.7],"Austria":[13.8,47.63],"Azerbaijan":[48.63,40.39],"Bahamas":[-78.07,24.72],"Bahrain":[50.54,26.05],"Bangladesh":[90.43,23.67],"Barbados":[-59.56,13.18],
-      "Belarus":[27.96,53.47],"Belgium":[4.68,50.62],"Belize":[-88.68,17.24],"Benin":[2.31,9.5],"Bermuda (United Kingdom)":[-64.75,32.32],"Bhutan":[90.47,27.42],"Bolivia":[-64.45,-16.73],"Bosnia and Herzegovina":[17.83,44.14],"Botswana":[23.86,-22.24],"Brazil":[-54.36,-11.52],
-      "British Virgin Islands (United Kingdom)":[-64.62,18.42],"Brunei":[114.64,4.54],"Bulgaria":[25.25,42.82],"Burkina Faso":[-1.69,12.11],"Burundi":[29.89,-3.26],"Cambodia":[105.04,12.7],"Cameroon":[12.95,6.29],"Canada":[-98.42,57.55],"Cape Verde":[-23.63,15.08],"Cayman Islands (United Kingdom)":[-81.25,19.31],
-      "Central African Republic":[20.52,6.33],"Chad":[18.43,15.28],"Chile":[-70.77,-37.83],"China":[104.69,38.07],"Christmas Island (Australia)":[105.7,-10.45],"Cocos (Keeling) Islands (Australia)":[96.84,-12.17],"Colombia":[-72.64,4.19],"Comoros":[43.35,-11.66],"Congo (Republic of the Congo)":[14.88,-0.73],"Cook Islands (New Zealand)":[-159.79,-21.22],
-      "Costa Rica":[-84.15,9.86],"Croatia":[16.63,44.91],"Cuba":[-79.7,21.48],"Curaçao (Netherlands)":[-68.97,12.2],"Cyprus":[33.38,35.12],"Czech Republic":[15.38,49.75],"DR Congo (Democratic Republic of the Congo)":[23.42,-3.34],"Denmark":[9.38,56.0],"Djibouti":[42.61,11.75],"Dominica":[-61.36,15.43],
-      "Dominican Republic":[-70.43,18.78],"East Timor":[125.95,-8.81],"Ecuador":[-78.46,-1.56],"Egypt":[30.24,26.61],"El Salvador":[-88.86,13.76],"Equatorial Guinea":[10.43,1.6],"Eritrea":[39.27,15.01],"Estonia":[25.92,58.65],"Eswatini":[31.51,-26.56],"Ethiopia":[39.91,8.73],
-      "Falkland Islands (United Kingdom)":[-58.75,-51.76],"Faroe Islands (Denmark)":[-6.98,62.13],"Fiji":[177.98,-17.82],"Finland":[25.66,65.02],"France":[2.19,46.64],"French Polynesia (France)":[-149.4,-17.67],"Gabon":[11.84,-0.63],"Gambia":[-15.38,13.43],"Georgia (country)":[43.38,42.18],"Germany":[10.43,51.08],
-      "Ghana":[-1.22,7.95],"Gibraltar (United Kingdom)":[-5.35,36.14],"Greece":[23.11,39.42],"Greenland (Denmark)":[-42.08,74.17],"Grenada":[-61.68,12.11],"Guam (United States)":[144.78,13.45],"Guatemala":[-90.31,15.82],"Guernsey (British Crown Dependency)":[-2.58,49.46],"Guinea":[-10.99,10.26],"Guinea-Bissau":[-14.98,11.98],
-      "Guyana":[-58.91,4.68],"Haiti":[-72.89,18.88],"Honduras":[-86.49,14.74],"Hong Kong (China)":[114.17,22.32],"Hungary":[19.4,47.23],"Iceland":[-19.06,65.12],"India":[81.17,23.59],"Indonesia":[113.97,0.16],"Iran":[54.24,32.91],"Iraq":[43.83,33.11],
-      "Ireland":[-8.24,53.3],"Isle of Man (British Crown Dependency)":[-4.53,54.23],"Israel":[35.03,31.51],"Italy":[12.76,42.98],"Ivory Coast (Côte d'Ivoire)":[-5.57,7.54],"Jamaica":[-77.3,18.12],"Japan":[137.47,36.77],"Jersey (British Crown Dependency)":[-2.13,49.22],"Jordan":[36.96,31.39],"Kazakhstan":[66.38,47.64],
-      "Kenya":[37.95,0.69],"Kiribati":[-157.39,1.87],"Kosovo":[20.9,42.6],"Kuwait":[47.56,29.28],"Kyrgyzstan":[74.18,41.36],"Laos":[103.76,18.12],"Latvia":[24.69,56.81],"Lebanon":[35.9,33.91],"Lesotho":[28.24,-29.6],"Liberia":[-9.26,6.52],
-      "Libya":[17.91,27.2],"Liechtenstein":[9.55,47.15],"Lithuania":[23.95,55.29],"Luxembourg":[6.1,49.78],"Macau (China)":[113.55,22.2],"Madagascar":[46.68,-19.04],"Malawi":[34.23,-13.13],"Malaysia":[114.63,3.67],"Maldives":[73.1,-0.61],"Mali":[-4.35,17.17],
-      "Malta":[14.44,35.89],"Marshall Islands":[168.72,7.31],"Mauritania":[-10.5,20.47],"Mauritius":[57.56,-20.28],"Mexico":[-101.55,23.87],"Micronesia (Federated States of)":[158.23,6.88],"Moldova":[28.39,47.07],"Monaco":[7.41,43.75],"Mongolia":[103.4,47.09],"Montenegro":[19.3,42.74],
-      "Montserrat (United Kingdom)":[-62.19,16.74],"Morocco":[-8.82,28.69],"Mozambique":[35.21,-17.53],"Myanmar":[97.09,19.9],"Namibia":[18.16,-21.91],"Nauru":[166.93,-0.52],"Nepal":[84.13,28.3],"Netherlands":[5.55,52.13],"New Caledonia (France)":[165.51,-21.33],"New Zealand":[170.69,-43.83],
-      "Nicaragua":[-85.02,12.89],"Niger":[8.87,17.08],"Nigeria":[8.15,9.61],"Niue (New Zealand)":[-169.87,-19.05],"Norfolk Island (Australia)":[167.95,-29.04],"North Korea":[127.34,40.19],"North Macedonia":[21.71,41.59],"Northern Cyprus":[33.4,35.3],"Northern Mariana Islands (United States)":[145.74,15.18],"Norway":[16.67,64.98],
-      "Oman":[55.84,20.72],"Pakistan":[69.09,30.12],"Palau":[134.58,7.53],"Palestine":[35.24,31.93],"Panama":[-80.14,8.44],"Papua New Guinea":[144.83,-7.16],"Paraguay":[-58.39,-23.42],"Peru":[-74.11,-8.52],"Philippines":[121.82,15.59],"Pitcairn Islands (United Kingdom)":[-128.31,-24.37],
-      "Poland":[19.44,52.07],"Portugal":[-7.93,39.68],"Puerto Rico (United States)":[-66.49,18.22],"Qatar":[51.2,25.32],"Romania":[25.09,45.82],"Russia":[98.67,59.04],"Rwanda":[29.92,-2.01],"Saint Barthélemy (France)":[-62.83,17.91],"Saint Helena, Ascension and Tristan da Cunha (United Kingdom)":[-5.72,-15.96],"Saint Kitts and Nevis":[-62.75,17.31],
-      "Saint Lucia":[-60.97,13.9],"Saint Martin (France)":[-63.07,18.08],"Saint Pierre and Miquelon (France)":[-56.32,46.95],"Saint Vincent and the Grenadines":[-61.19,13.25],"Samoa":[-172.44,-13.63],"San Marino":[12.46,43.94],"Saudi Arabia":[44.6,24.14],"Senegal":[-14.61,14.23],"Serbia":[20.86,44.03],"Seychelles":[55.47,-4.66],
-      "Sierra Leone":[-11.79,8.56],"Singapore":[103.81,1.35],"Sint Maarten (Netherlands)":[-63.07,18.04],"Slovakia":[19.58,48.7],"Slovenia":[14.89,46.14],"Solomon Islands":[160.16,-9.61],"Somalia":[45.4,6.52],"South Africa":[24.75,-28.55],"South Korea":[127.76,36.4],"South Ossetia":[43.97,42.33],
-      "South Sudan":[30.39,7.66],"Spain":[-3.65,40.37],"Sri Lanka":[80.67,7.7],"Sudan":[29.95,15.67],"Suriname":[-55.86,4.1],"Sweden":[17.06,62.73],"Switzerland":[8.29,46.74],"Syria":[38.51,35.1],"São Tomé and Príncipe":[6.61,0.23],"Taiwan":[120.96,23.7],
-      "Tajikistan":[70.94,38.57],"Tanzania":[34.82,-6.36],"Thailand":[101.09,13.66],"Togo":[0.9,8.66],"Tokelau (New Zealand)":[-171.85,-9.2],"Tonga":[-175.2,-21.16],"Transnistria":[29.6,47.2],"Trinidad and Tobago":[-61.37,10.42],"Tunisia":[9.66,34.09],"Turkey":[35.57,38.93],
-      "Turkmenistan":[58.46,39.06],"Turks and Caicos Islands (United Kingdom)":[-71.74,21.8],"Tuvalu":[179.22,-8.51],"U.S. Virgin Islands (United States)":[-64.76,17.74],"Uganda":[32.34,1.28],"Ukraine":[31.27,48.66],"United Arab Emirates":[54.28,24.18],"United Kingdom":[-2.85,53.98],"United States":[-96.33,38.82],"Uruguay":[-56.02,-32.78],
-      "Uzbekistan":[63.85,41.49],"Vanuatu":[166.85,-15.19],"Vatican City":[12.45,41.9],"Venezuela":[-66.36,7.15],"Vietnam":[105.91,16.52],"Wallis and Futuna (France)":[-178.13,-14.28],"Western Sahara":[-12.9,24.5],"Yemen":[47.47,16.0],"Zambia":[27.76,-13.16],"Zimbabwe":[29.72,-18.93],
-      "Åland (Finland)":[19.9,60.2]
-    };
-    const API = '/.netlify/functions/room';
-    const MAX_ROUNDS = 20;
+<div class="layout">
+  <div class="card main-card">
+    <h1>Population Guesser</h1>
+    <p class="subtitle">Guess the population of the country shown. The closer you are, the more points you score.</p>
 
-    const app = document.getElementById('app');
-    const historyCard = document.getElementById('historyCard');
+    <div id="app"></div>
+  </div>
 
-    function fmt(n) {
-        if (n === null || n === undefined || isNaN(n)) return '—';
-        return Math.round(n).toLocaleString('en-US');
-    }
-    function parseGuess(raw) {
-        if (!raw) return null;
-        const cleaned = String(raw).replace(/[,\s]/g, '').replace(/[^0-9.]/g, '');
-        if (!cleaned) return null;
-        const val = parseFloat(cleaned);
-        return isNaN(val) ? null : val;
-    }
+  <div class="card history-card" id="historyCard" style="display:none;">
+    <h2>Guess History</h2>
+    <div class="chart-wrap" id="historyChart"><div class="chart-empty">Guesses will show up here as you play.</div></div>
+    <div class="history-list" id="historyList"><div class="empty-note">Guesses will show up here as you play.</div></div>
+  </div>
+</div>
 
-    // ---------------- Router ----------------
-    let view = 'landing'; // landing, create-wait, join, playing
-    let myPlayerId = null;
-    let myRoomId = null;
-    let pollTimer = null;
-    let lastRenderedRound = null;
+<script>
+const CENTROIDS = {"Abkhazia":[41.05,43.05],"Afghanistan":[66.59,34.13],"Albania":[20.06,41.14],"Algeria":[2.66,28.35],"American Samoa (United States)":[-170.7,-14.3],"Andorra":[1.58,42.55],"Angola":[17.65,-12.17],"Anguilla (United Kingdom)":[-63.06,18.22],"Antigua and Barbuda":[-61.79,17.07],"Argentina":[-64.53,-35.7],"Armenia":[45.05,40.18],"Artsakh":[46.75,39.8],"Aruba (Netherlands)":[-69.97,12.52],"Australia":[134.02,-25.7],"Austria":[13.8,47.63],"Azerbaijan":[48.63,40.39],"Bahamas":[-78.07,24.72],"Bahrain":[50.54,26.05],"Bangladesh":[90.43,23.67],"Barbados":[-59.56,13.18],"Belarus":[27.96,53.47],"Belgium":[4.68,50.62],"Belize":[-88.68,17.24],"Benin":[2.31,9.5],"Bermuda (United Kingdom)":[-64.75,32.32],"Bhutan":[90.47,27.42],"Bolivia":[-64.45,-16.73],"Bosnia and Herzegovina":[17.83,44.14],"Botswana":[23.86,-22.24],"Brazil":[-54.36,-11.52],"British Virgin Islands (United Kingdom)":[-64.62,18.42],"Brunei":[114.64,4.54],"Bulgaria":[25.25,42.82],"Burkina Faso":[-1.69,12.11],"Burundi":[29.89,-3.26],"Cambodia":[105.04,12.7],"Cameroon":[12.95,6.29],"Canada":[-98.42,57.55],"Cape Verde":[-23.63,15.08],"Cayman Islands (United Kingdom)":[-81.25,19.31],"Central African Republic":[20.52,6.33],"Chad":[18.43,15.28],"Chile":[-70.77,-37.83],"China":[104.69,38.07],"Christmas Island (Australia)":[105.7,-10.45],"Cocos (Keeling) Islands (Australia)":[96.84,-12.17],"Colombia":[-72.64,4.19],"Comoros":[43.35,-11.66],"Congo (Republic of the Congo)":[14.88,-0.73],"Cook Islands (New Zealand)":[-159.79,-21.22],"Costa Rica":[-84.15,9.86],"Croatia":[16.63,44.91],"Cuba":[-79.7,21.48],"Curaçao (Netherlands)":[-68.97,12.2],"Cyprus":[33.38,35.12],"Czech Republic":[15.38,49.75],"DR Congo (Democratic Republic of the Congo)":[23.42,-3.34],"Denmark":[9.38,56.0],"Djibouti":[42.61,11.75],"Dominica":[-61.36,15.43],"Dominican Republic":[-70.43,18.78],"East Timor":[125.95,-8.81],"Ecuador":[-78.46,-1.56],"Egypt":[30.24,26.61],"El Salvador":[-88.86,13.76],"Equatorial Guinea":[10.43,1.6],"Eritrea":[39.27,15.01],"Estonia":[25.92,58.65],"Eswatini":[31.51,-26.56],"Ethiopia":[39.91,8.73],"Falkland Islands (United Kingdom)":[-58.75,-51.76],"Faroe Islands (Denmark)":[-6.98,62.13],"Fiji":[177.98,-17.82],"Finland":[25.66,65.02],"France":[2.19,46.64],"French Polynesia (France)":[-149.4,-17.67],"Gabon":[11.84,-0.63],"Gambia":[-15.38,13.43],"Georgia (country)":[43.38,42.18],"Germany":[10.43,51.08],"Ghana":[-1.22,7.95],"Gibraltar (United Kingdom)":[-5.35,36.14],"Greece":[23.11,39.42],"Greenland (Denmark)":[-42.08,74.17],"Grenada":[-61.68,12.11],"Guam (United States)":[144.78,13.45],"Guatemala":[-90.31,15.82],"Guernsey (British Crown Dependency)":[-2.58,49.46],"Guinea":[-10.99,10.26],"Guinea-Bissau":[-14.98,11.98],"Guyana":[-58.91,4.68],"Haiti":[-72.89,18.88],"Honduras":[-86.49,14.74],"Hong Kong (China)":[114.17,22.32],"Hungary":[19.4,47.23],"Iceland":[-19.06,65.12],"India":[81.17,23.59],"Indonesia":[113.97,0.16],"Iran":[54.24,32.91],"Iraq":[43.83,33.11],"Ireland":[-8.24,53.3],"Isle of Man (British Crown Dependency)":[-4.53,54.23],"Israel":[35.03,31.51],"Italy":[12.76,42.98],"Ivory Coast (Côte d'Ivoire)":[-5.57,7.54],"Jamaica":[-77.3,18.12],"Japan":[137.47,36.77],"Jersey (British Crown Dependency)":[-2.13,49.22],"Jordan":[36.96,31.39],"Kazakhstan":[66.38,47.64],"Kenya":[37.95,0.69],"Kiribati":[-157.39,1.87],"Kosovo":[20.9,42.6],"Kuwait":[47.56,29.28],"Kyrgyzstan":[74.18,41.36],"Laos":[103.76,18.12],"Latvia":[24.69,56.81],"Lebanon":[35.9,33.91],"Lesotho":[28.24,-29.6],"Liberia":[-9.26,6.52],"Libya":[17.91,27.2],"Liechtenstein":[9.55,47.15],"Lithuania":[23.95,55.29],"Luxembourg":[6.1,49.78],"Macau (China)":[113.55,22.2],"Madagascar":[46.68,-19.04],"Malawi":[34.23,-13.13],"Malaysia":[114.63,3.67],"Maldives":[73.1,-0.61],"Mali":[-4.35,17.17],"Malta":[14.44,35.89],"Marshall Islands":[168.72,7.31],"Mauritania":[-10.5,20.47],"Mauritius":[57.56,-20.28],"Mexico":[-101.55,23.87],"Micronesia (Federated States of)":[158.23,6.88],"Moldova":[28.39,47.07],"Monaco":[7.41,43.75],"Mongolia":[103.4,47.09],"Montenegro":[19.3,42.74],"Montserrat (United Kingdom)":[-62.19,16.74],"Morocco":[-8.82,28.69],"Mozambique":[35.21,-17.53],"Myanmar":[97.09,19.9],"Namibia":[18.16,-21.91],"Nauru":[166.93,-0.52],"Nepal":[84.13,28.3],"Netherlands":[5.55,52.13],"New Caledonia (France)":[165.51,-21.33],"New Zealand":[170.69,-43.83],"Nicaragua":[-85.02,12.89],"Niger":[8.87,17.08],"Nigeria":[8.15,9.61],"Niue (New Zealand)":[-169.87,-19.05],"Norfolk Island (Australia)":[167.95,-29.04],"North Korea":[127.34,40.19],"North Macedonia":[21.71,41.59],"Northern Cyprus":[33.4,35.3],"Northern Mariana Islands (United States)":[145.74,15.18],"Norway":[16.67,64.98],"Oman":[55.84,20.72],"Pakistan":[69.09,30.12],"Palau":[134.58,7.53],"Palestine":[35.24,31.93],"Panama":[-80.14,8.44],"Papua New Guinea":[144.83,-7.16],"Paraguay":[-58.39,-23.42],"Peru":[-74.11,-8.52],"Philippines":[121.82,15.59],"Pitcairn Islands (United Kingdom)":[-128.31,-24.37],"Poland":[19.44,52.07],"Portugal":[-7.93,39.68],"Puerto Rico (United States)":[-66.49,18.22],"Qatar":[51.2,25.32],"Romania":[25.09,45.82],"Russia":[98.67,59.04],"Rwanda":[29.92,-2.01],"Saint Barthélemy (France)":[-62.83,17.91],"Saint Helena, Ascension and Tristan da Cunha (United Kingdom)":[-5.72,-15.96],"Saint Kitts and Nevis":[-62.75,17.31],"Saint Lucia":[-60.97,13.9],"Saint Martin (France)":[-63.07,18.08],"Saint Pierre and Miquelon (France)":[-56.32,46.95],"Saint Vincent and the Grenadines":[-61.19,13.25],"Samoa":[-172.44,-13.63],"San Marino":[12.46,43.94],"Saudi Arabia":[44.6,24.14],"Senegal":[-14.61,14.23],"Serbia":[20.86,44.03],"Seychelles":[55.47,-4.66],"Sierra Leone":[-11.79,8.56],"Singapore":[103.81,1.35],"Sint Maarten (Netherlands)":[-63.07,18.04],"Slovakia":[19.58,48.7],"Slovenia":[14.89,46.14],"Solomon Islands":[160.16,-9.61],"Somalia":[45.4,6.52],"South Africa":[24.75,-28.55],"South Korea":[127.76,36.4],"South Ossetia":[43.97,42.33],"South Sudan":[30.39,7.66],"Spain":[-3.65,40.37],"Sri Lanka":[80.67,7.7],"Sudan":[29.95,15.67],"Suriname":[-55.86,4.1],"Sweden":[17.06,62.73],"Switzerland":[8.29,46.74],"Syria":[38.51,35.1],"São Tomé and Príncipe":[6.61,0.23],"Taiwan":[120.96,23.7],"Tajikistan":[70.94,38.57],"Tanzania":[34.82,-6.36],"Thailand":[101.09,13.66],"Togo":[0.9,8.66],"Tokelau (New Zealand)":[-171.85,-9.2],"Tonga":[-175.2,-21.16],"Transnistria":[29.6,47.2],"Trinidad and Tobago":[-61.37,10.42],"Tunisia":[9.66,34.09],"Turkey":[35.57,38.93],"Turkmenistan":[58.46,39.06],"Turks and Caicos Islands (United Kingdom)":[-71.74,21.8],"Tuvalu":[179.22,-8.51],"U.S. Virgin Islands (United States)":[-64.76,17.74],"Uganda":[32.34,1.28],"Ukraine":[31.27,48.66],"United Arab Emirates":[54.28,24.18],"United Kingdom":[-2.85,53.98],"United States":[-96.33,38.82],"Uruguay":[-56.02,-32.78],"Uzbekistan":[63.85,41.49],"Vanuatu":[166.85,-15.19],"Vatican City":[12.45,41.9],"Venezuela":[-66.36,7.15],"Vietnam":[105.91,16.52],"Wallis and Futuna (France)":[-178.13,-14.28],"Western Sahara":[-12.9,24.5],"Yemen":[47.47,16.0],"Zambia":[27.76,-13.16],"Zimbabwe":[29.72,-18.93],"Åland (Finland)":[19.9,60.2]};
+const API = '/.netlify/functions/room';
+const MAX_ROUNDS = 20;
 
-    const urlParams = new URLSearchParams(location.search);
-    const roomFromUrl = urlParams.get('room');
+const app = document.getElementById('app');
+const historyCard = document.getElementById('historyCard');
 
-    function render() {
-        if (view === 'landing') return renderLanding();
-        if (view === 'create-wait') return renderCreateWait();
-        if (view === 'join') return renderJoin();
-        if (view === 'error') return renderError();
-        if (view === 'playing') return; // handled by renderGame() driven by polling
-    }
+function fmt(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return Math.round(n).toLocaleString('en-US');
+}
+function parseGuess(raw) {
+  if (!raw) return null;
+  const cleaned = String(raw).replace(/[,\s]/g, '').replace(/[^0-9.]/g, '');
+  if (!cleaned) return null;
+  const val = parseFloat(cleaned);
+  return isNaN(val) ? null : val;
+}
 
-    function renderLanding() {
-        historyCard.style.display = 'none';
-        app.innerHTML = (
-              '<div class="mode-select">' +
-                '<button class="mode-btn" id="btnCreate">Play Online with a Friend</button>' +
-              '</div>' +
-              '<p class="note">You\'ll get a link to send to a friend on any device. You both guess the same country each round, with a 30-second timer.</p>' +
-              '<div class="name-row"><input type="text" id="createNameInput" placeholder="Your name" maxlength="24"></div>' +
-              '<button class="btn" id="btnDoCreate">Create Game &amp; Get Link</button>'
-            );
-        document.getElementById('btnDoCreate').addEventListener('click', doCreate);
-    }
+// ---------------- Router ----------------
+let view = 'landing'; // landing, create-wait, join, playing
+let landingMode = null; // null | 'solo' | 'duo' — which mode is picked on the landing screen
+let myPlayerId = null;
+let myRoomId = null;
+let pollTimer = null;
+let lastRenderedRound = null;
 
-    function renderJoin() {
-        historyCard.style.display = 'none';
-        app.innerHTML = (
-              '<p class="note">You\'ve been invited to room <b>' + roomFromUrl + '</b>.</p>' +
-              '<div class="name-row"><input type="text" id="joinNameInput" placeholder="Your name" maxlength="24"></div>' +
-              '<button class="btn" id="btnDoJoin">Join Game</button>' +
-              '<div id="joinError"></div>'
-            );
-        document.getElementById('btnDoJoin').addEventListener('click', doJoin);
-    }
+const urlParams = new URLSearchParams(location.search);
+const roomFromUrl = urlParams.get('room');
 
-    function renderCreateWait() {
-        historyCard.style.display = 'none';
-        const link = location.origin + location.pathname + '?room=' + myRoomId;
-        app.innerHTML = (
-              '<p class="note">Send this link to whoever you\'re playing with:</p>' +
-              '<div class="link-box"><input type="text" id="shareLink" readonly value="' + link + '"><button class="btn btn-secondary" id="copyLinkBtn">Copy</button></div>' +
-              '<p class="spinner-note">Waiting for your friend to join…</p>' +
-              '<p class="back-link" id="cancelWait">Cancel and start over</p>'
-            );
-        document.getElementById('copyLinkBtn').addEventListener('click', () => {
-              const input = document.getElementById('shareLink');
-              input.select();
-              navigator.clipboard && navigator.clipboard.writeText(input.value).catch(() => {});
-              document.getElementById('copyLinkBtn').textContent = 'Copied!';
-        });
-        document.getElementById('cancelWait').addEventListener('click', () => {
-              stopPolling();
-              history.replaceState(null, '', location.pathname);
-              view = 'landing';
-              render();
-        });
-    }
+function render() {
+  if (view === 'landing') return renderLanding();
+  if (view === 'create-wait') return renderCreateWait();
+  if (view === 'join') return renderJoin();
+  if (view === 'error') return renderError();
+  if (view === 'playing') return; // handled by renderGame() driven by polling
+}
 
-    function renderError() {
-        historyCard.style.display = 'none';
-        app.innerHTML = (
-              '<div class="error-box">' + (window.__lastError || 'Something went wrong.') + '</div>' +
-              '<button class="btn" id="backHomeBtn">Back to start</button>'
-            );
-        document.getElementById('backHomeBtn').addEventListener('click', () => {
-              history.replaceState(null, '', location.pathname);
-              view = 'landing';
-              render();
-        });
-    }
+function renderLanding() {
+  historyCard.style.display = 'none';
+  let html = '<div class="mode-select">' +
+      '<button class="mode-btn' + (landingMode === 'solo' ? ' active' : '') + '" id="btnModeSolo">1 Player</button>' +
+      '<button class="mode-btn' + (landingMode === 'duo' ? ' active' : '') + '" id="btnModeDuo">2 Players</button>' +
+    '</div>';
 
-    function showError(msg) {
-        window.__lastError = msg;
-        view = 'error';
-        render();
-    }
+  if (landingMode === 'solo') {
+    html += '<p class="note">Play on your own — guess the population of each country, no one else needed.</p>' +
+      '<div class="name-row"><input type="text" id="createNameInput" placeholder="Your name" maxlength="24"></div>' +
+      '<button class="btn" id="btnDoCreate">Start Game</button>';
+  } else if (landingMode === 'duo') {
+    html += '<p class="note">You\'ll get a link to send to a friend on any device. You both guess the same country each round, with a 30-second timer.</p>' +
+      '<div class="name-row"><input type="text" id="createNameInput" placeholder="Your name" maxlength="24"></div>' +
+      '<button class="btn" id="btnDoCreate">Create Game &amp; Get Link</button>';
+  }
 
-    // ---------------- API helpers ----------------
-    async function api(action, payload) {
-        const isGet = action === 'state';
-        const opts = isGet
-          ? { method: 'GET' }
-              : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action: action }, payload)) };
-        const url = isGet
-          ? API + '?action=state&roomId=' + encodeURIComponent(payload.roomId)
-              : API;
-        const res = await fetch(url, opts);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
-        return data;
-    }
+  app.innerHTML = html;
+  document.getElementById('btnModeSolo').addEventListener('click', () => { landingMode = 'solo'; render(); });
+  document.getElementById('btnModeDuo').addEventListener('click', () => { landingMode = 'duo'; render(); });
+  if (landingMode) {
+    document.getElementById('btnDoCreate').addEventListener('click', () => doCreate(landingMode));
+  }
+}
 
-    // ---------------- Create / Join flow ----------------
-    async function doCreate() {
-        const name = document.getElementById('createNameInput').value.trim() || 'Player 1';
-        try {
-              const data = await api('create', { name: name });
-              myPlayerId = data.playerId;
-              myRoomId = data.roomId;
-              history.replaceState(null, '', location.pathname + '?room=' + myRoomId);
-              view = 'create-wait';
-              render();
-              startPolling();
-        } catch (e) {
-              showError(e.message);
-        }
-    }
+function renderJoin() {
+  historyCard.style.display = 'none';
+  app.innerHTML = (
+    '<p class="note">You\'ve been invited to room <b>' + roomFromUrl + '</b>.</p>' +
+    '<div class="name-row"><input type="text" id="joinNameInput" placeholder="Your name" maxlength="24"></div>' +
+    '<button class="btn" id="btnDoJoin">Join Game</button>' +
+    '<div id="joinError"></div>'
+  );
+  document.getElementById('btnDoJoin').addEventListener('click', doJoin);
+}
 
-    async function doJoin() {
-        const name = document.getElementById('joinNameInput').value.trim() || 'Player 2';
-        try {
-              const data = await api('join', { roomId: roomFromUrl, name: name });
-              myPlayerId = data.playerId;
-              myRoomId = data.roomId;
-              view = 'playing';
-              startPolling();
-        } catch (e) {
-              document.getElementById('joinError').innerHTML = '<div class="error-box">' + e.message + '</div>';
-        }
-    }
-
-    function startPolling() {
-        stopPolling();
-        poll();
-        pollTimer = setInterval(poll, 1200);
-    }
-    function stopPolling() {
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = null;
-    }
-
-    let lastState = null;
-    async function poll() {
-        try {
-              const data = await api('state', { roomId: myRoomId });
-              lastState = data.state;
-              if (lastState.status === 'waiting') {
-                      // still waiting for player 2; stay on create-wait screen
-                      return;
-              }
-              if (view !== 'playing') {
-                      view = 'playing';
-              }
-              renderGame(lastState);
-        } catch (e) {
-              stopPolling();
-              showError(e.message);
-        }
-    }
-
-    // ---------------- Game rendering (online) ----------------
-    function renderGame(state) {
-        historyCard.style.display = 'block';
-        const myId = myPlayerId;
-        const oppId = myId === 'p1' ? 'p2' : 'p1';
-        const me = state.players[myId];
-        const opp = state.players[oppId];
-
-        if (state.status === 'ended') {
-              stopPolling();
-              return renderEnded(state);
-        }
-
-        const iAnswered = !!state.answeredFlags[myId];
-        const oppAnswered = !!state.answeredFlags[oppId];
-
-        let body = '';
-        body += '<div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>';
-        body += '<div class="country-name">' + (state.current ? state.current.name : '…') + '</div>';
-
-        if (state.status === 'in_progress') {
-              const secsLeft = Math.max(0, Math.ceil((state.roundDeadline - Date.now()) / 1000));
-              body += '<div class="timer-display' + (secsLeft <= 10 ? ' low' : '') + '">Time left: 0:' + (secsLeft < 10 ? '0' + secsLeft : secsLeft) + '</div>';
-
-              body += '<div class="player-box' + (iAnswered ? ' answered' : '') + '">';
-              body += '<div class="player-box-name"><span>' + me.name + ' (you)</span><span>' + me.totalScore + ' pts</span></div>';
-              if (iAnswered) {
-                      body += '<div class="waiting-note">Answer submitted — waiting for ' + opp.name + '…</div>';
-              } else {
-                      body += '<div class="guess-row"><input type="text" id="guessInput" placeholder="Type your guess, e.g. 5" inputmode="numeric" autocomplete="off"><button class="btn" id="submitGuessBtn">Guess</button></div>';
-                      body += '<div class="quick-multiply">' +
-                                '<span class="quick-multiply-label">Quick entry:</span>' +
-                                '<button class="btn-chip" data-mult="1000" type="button">&times; Thousand</button>' +
-                                '<button class="btn-chip" data-mult="1000000" type="button">&times; Million</button>' +
-                                '<button class="btn-chip" data-mult="1000000000" type="button">&times; Billion</button>' +
-                                '<button class="btn-chip btn-chip-clear" id="clearGuessBtn" type="button">Clear</button>' +
-                                '</div>';
-              }
-              body += '</div>';
-
-              body += '<div class="player-box' + (oppAnswered ? ' answered' : '') + '">';
-              body += '<div class="player-box-name"><span>' + opp.name + '</span><span>' + opp.totalScore + ' pts</span></div>';
-              body += '<div class="waiting-note">' + (oppAnswered ? 'Has answered this round.' : 'Still guessing…') + '</div>';
-              body += '</div>';
-        } else if (state.status === 'revealing') {
-              const roundEntries = state.history.filter(h => h.round === state.round);
-              const secsLeft = Math.max(0, Math.ceil((state.revealUntil - Date.now()) / 1000));
-              body += '<div class="result show">' + roundEntries.map(h => {
-                      const scoreColor = h.score >= 80 ? 'var(--good)' : (h.score >= 40 ? 'var(--accent)' : 'var(--bad)');
-                      const winner = roundEntries.length === 2 && roundEntries[0].score !== roundEntries[1].score && h.score === Math.max(roundEntries[0].score, roundEntries[1].score) ? '<span class="winner-tag">Round winner</span>' : '';
-                      const detail = h.timedOut ? 'Ran out of time — no answer submitted.' :
-                                ('Actual population: <b>' + fmt(h.actual) + '</b><br>Guess: <b>' + fmt(h.guess) + '</b><br>Off by <b>' + h.pct.toFixed(1) + '%</b>');
-                      return '<div class="result-player"><div class="result-player-name">' + h.playerName + (h.playerId === myId ? ' (you)' : '') + winner + '</div>' +
-                                '<div class="result-score" style="color:' + scoreColor + ';">' + h.score + ' points</div>' +
-                                '<div class="result-detail">' + detail + '</div></div>';
-              }).join('') + '</div>';
-              body += '<p class="note">Next round in ' + secsLeft + 's…</p>';
-        }
-
-        body += '<div class="stats-row">' +
-              statGroup(me.name + ' (you)', me, state.round) +
-              statGroup(opp.name, opp, state.round) +
-              '</div>';
-
-        app.innerHTML = body;
-
-        if (state.status === 'in_progress' && !iAnswered) {
-              document.getElementById('guessInput').focus();
-              document.getElementById('submitGuessBtn').addEventListener('click', submitOnlineGuess);
-              document.getElementById('guessInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitOnlineGuess(); });
-              document.getElementById('clearGuessBtn').addEventListener('click', () => { document.getElementById('guessInput').value = ''; document.getElementById('guessInput').focus(); });
-              document.querySelectorAll('.btn-chip[data-mult]').forEach(btn => {
-                      btn.addEventListener('click', () => {
-                                const input = document.getElementById('guessInput');
-                                const current = parseGuess(input.value);
-                                const base = current === null ? 1 : current;
-                                input.value = fmt(base * Number(btn.dataset.mult));
-                                input.focus();
-                      });
-              });
-        }
-
-        updateHistoryUI(state, myId);
-    }
-
-    function statGroup(name, player, roundsPlayed) {
-        const rounds = Math.max(0, roundsPlayed - (lastState && lastState.status === 'in_progress' ? 1 : 0));
-        const avg = rounds ? Math.round(player.totalScore / rounds) : 0;
-        return '<div class="stats-group"><div class="stats-group-name">' + name + '</div>' +
-              '<div class="stats-group-values">' +
-                '<div class="stat"><div class="stat-value">' + rounds + '</div><div class="stat-label">Rounds</div></div>' +
-                '<div class="stat"><div class="stat-value">' + player.totalScore + '</div><div class="stat-label">Total</div></div>' +
-                '<div class="stat"><div class="stat-value">' + avg + '</div><div class="stat-label">Avg</div></div>' +
-              '</div></div>';
-    }
-
-    let submittingGuess = false;
-    async function submitOnlineGuess() {
-        if (submittingGuess) return;
-        const input = document.getElementById('guessInput');
-        const guess = parseGuess(input.value);
-        if (guess === null) { input.focus(); return; }
-        submittingGuess = true;
-        try {
-              const data = await api('guess', { roomId: myRoomId, playerId: myPlayerId, guess: guess });
-              lastState = data.state;
-              renderGame(lastState);
-        } catch (e) {
-              showError(e.message);
-        } finally {
-              submittingGuess = false;
-        }
-    }
-
-    function updateHistoryUI(state, myId) {
-        const listEl = document.getElementById('historyList');
-        const entries = state.history.slice().reverse();
-        const colorFor = pid => pid === myId ? '#5eead4' : '#f472b6';
-        if (entries.length === 0) {
-              listEl.innerHTML = '<div class="empty-note">Guesses will show up here as you play.</div>';
-        } else {
-              listEl.innerHTML = entries.map(h => (
-                      '<div class="history-item"><span><span class="swatch" style="background:' + colorFor(h.playerId) + '"></span>' +
-                        h.playerName + (h.playerId === myId ? ' (you)' : '') + ' — ' + h.name + '</span>' +
-                        '<span class="pts">' + h.score + ' pts</span></div>'
-                    )).join('');
-        }
-        updateChart(state, myId, colorFor);
-    }
-
-    const CHART_LOG_MAX = Math.log10(1500000000);
-    function logPct(value) {
-        const v = Math.max(1, value || 1);
-        return Math.min(100, Math.max(0, (Math.log10(v) / CHART_LOG_MAX) * 100));
-    }
-    function updateChart(state, myId, colorFor) {
-        const el = document.getElementById('historyChart');
-        const entries = state.history.slice().reverse();
-        if (entries.length === 0) {
-              el.innerHTML = '<div class="chart-empty">Guesses will show up here as you play.</div>';
-              return;
-        }
-        el.innerHTML = entries.map(h => {
-              const guessPct = h.guess === null ? 0 : logPct(h.guess);
-              const actualPct = logPct(h.actual);
-              const label = h.playerName + (h.playerId === myId ? ' (you)' : '') + ' — ' + h.name;
-              const detail = h.guess === null ? 'no answer vs ' + fmt(h.actual) + ' actual' : (fmt(h.guess) + ' guess vs ' + fmt(h.actual) + ' actual');
-              return '<div class="chart-row"><div class="chart-row-label"><span class="name">' + label + '</span><span class="pct">' + detail + '</span></div>' +
-                      '<div class="chart-bar-track">' +
-                      '<div class="chart-bar-fill" style="width:' + guessPct + '%; background:' + colorFor(h.playerId) + '; opacity:0.9;"></div>' +
-                      '<div class="chart-bar-fill" style="left:calc(' + actualPct + '% - 1px); width:2px; background:#ffffff;"></div>' +
-                      '</div></div>';
-        }).join('');
-    }
-
-    // ---------------- End screen ----------------
-    function renderEnded(state) {
-        const myId = myPlayerId;
-        const oppId = myId === 'p1' ? 'p2' : 'p1';
-        const me = state.players[myId];
-        const opp = state.players[oppId];
-
-        let banner = '';
-        if (me.totalScore === opp.totalScore) banner = '<div class="winner-banner">It\'s a tie!</div>';
-        else banner = '<div class="winner-banner">' + (me.totalScore > opp.totalScore ? me.name + ' (you)' : opp.name) + ' wins!</div>';
-
-        let html = '<div class="round-label">Game Over</div><div class="country-name" style="font-size:1.6rem;">Here\'s how it went</div>';
-        html += banner;
-        html += '<div class="end-stats">' +
-              endCard(me.name + ' (you)', me, state.round) +
-              endCard(opp.name, opp, state.round) +
-              '</div>';
-        html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
-              '<p class="map-note">Dots are placed by each country\'s approximate center; green = very close, teal = decent, red = far off.</p></div>';
-        html += '<div class="actions" style="margin-top:24px;"><button class="btn" id="playAgainBtn">Play Again</button></div>';
-
-        app.innerHTML = html;
-        renderMap(state, myId);
-        document.getElementById('playAgainBtn').addEventListener('click', () => {
-              history.replaceState(null, '', location.pathname);
-              myPlayerId = null;
-              myRoomId = null;
-              lastState = null;
-              view = 'landing';
-              render();
-        });
-        updateHistoryUI(state, myId);
-    }
-
-    function endCard(name, player, rounds) {
-        const avg = rounds ? Math.round(player.totalScore / rounds) : 0;
-        return '<div class="end-player-card"><h3 style="margin:0 0 10px 0;">' + name + '</h3>' +
-              '<div class="big-score">' + player.totalScore + '</div>' +
-              '<div class="stat-label">total points over ' + rounds + ' rounds (avg ' + avg + ')</div></div>';
-    }
-
-    function renderMap(state, myId) {
-        const width = 720, height = 360;
-        const lines = [];
-        for (let x = 0; x <= width; x += 60) lines.push('<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + height + '" stroke="#16233d" stroke-width="1"/>');
-        for (let y = 0; y <= height; y += 60) lines.push('<line x1="0" y1="' + y + '" x2="' + width + '" y2="' + y + '" stroke="#16233d" stroke-width="1"/>');
-        const dots = [];
-        state.history.forEach(h => {
-              const coords = CENTROIDS[h.name];
-              if (!coords) return;
-              const x = (coords[0] + 180) / 360 * width;
-              const y = (90 - coords[1]) / 180 * height;
-              const color = h.score >= 80 ? '#4ade80' : (h.score >= 40 ? '#5eead4' : '#f87171');
-              const shape = h.playerId === myId
-                ? '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="5" fill="' + color + '" fill-opacity="0.9" stroke="#0b1a2e" stroke-width="1"><title>' + h.playerName + ' — ' + h.name + ': ' + h.score + ' pts</title></circle>'
-                      : '<rect x="' + (x - 4).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" width="8" height="8" fill="' + color + '" fill-opacity="0.9" stroke="#0b1a2e" stroke-width="1"><title>' + h.playerName + ' — ' + h.name + ': ' + h.score + ' pts</title></rect>';
-              dots.push(shape);
-        });
-        document.getElementById('mapContainer').innerHTML =
-              '<svg viewBox="0 0 ' + width + ' ' + height + '" xmlns="http://www.w3.org/2000/svg">' +
-              '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="#0b1a2e"/>' + lines.join('') + dots.join('') + '</svg>';
-    }
-
-    // ---------------- Boot ----------------
-    if (roomFromUrl) {
-        view = 'join';
-    } else {
-        view = 'landing';
-    }
+function renderCreateWait() {
+  historyCard.style.display = 'none';
+  const link = location.origin + location.pathname + '?room=' + myRoomId;
+  app.innerHTML = (
+    '<p class="note">Send this link to whoever you\'re playing with:</p>' +
+    '<div class="link-box"><input type="text" id="shareLink" readonly value="' + link + '"><button class="btn btn-secondary" id="copyLinkBtn">Copy</button></div>' +
+    '<p class="spinner-note">Waiting for your friend to join…</p>' +
+    '<p class="back-link" id="cancelWait">Cancel and start over</p>'
+  );
+  document.getElementById('copyLinkBtn').addEventListener('click', () => {
+    const input = document.getElementById('shareLink');
+    input.select();
+    navigator.clipboard && navigator.clipboard.writeText(input.value).catch(() => {});
+    document.getElementById('copyLinkBtn').textContent = 'Copied!';
+  });
+  document.getElementById('cancelWait').addEventListener('click', () => {
+    stopPolling();
+    history.replaceState(null, '', location.pathname);
+    landingMode = null;
+    view = 'landing';
     render();
-  </script>
+  });
+}
 
-  </body>
-</html>
+function renderError() {
+  historyCard.style.display = 'none';
+  app.innerHTML = (
+    '<div class="error-box">' + (window.__lastError || 'Something went wrong.') + '</div>' +
+    '<button class="btn" id="backHomeBtn">Back to start</button>'
+  );
+  document.getElementById('backHomeBtn').addEventListener('click', () => {
+    history.replaceState(null, '', location.pathname);
+    landingMode = null;
+    view = 'landing';
+    render();
+  });
+}
+
+function showError(msg) {
+  window.__lastError = msg;
+  view = 'error';
+  render();
+}
+
+// ---------------- API helpers ----------------
+async function api(action, payload) {
+  const isGet = action === 'state';
+  const opts = isGet
+    ? { method: 'GET' }
+    : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action: action }, payload)) };
+  const url = isGet
+    ? API + '?action=state&roomId=' + encodeURIComponent(payload.roomId)
+    : API;
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+  return data;
+}
+
+// ---------------- Create / Join flow ----------------
+async function doCreate(mode) {
+  const name = document.getElementById('createNameInput').value.trim() || 'Player 1';
+  try {
+    const data = await api('create', { name: name, mode: mode });
+    myPlayerId = data.playerId;
+    myRoomId = data.roomId;
+    if (mode === 'solo') {
+      // No one else to wait for — the server already started round 1.
+      view = 'playing';
+      startPolling();
+    } else {
+      history.replaceState(null, '', location.pathname + '?room=' + myRoomId);
+      view = 'create-wait';
+      render();
+      startPolling();
+    }
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+async function doJoin() {
+  const name = document.getElementById('joinNameInput').value.trim() || 'Player 2';
+  try {
+    const data = await api('join', { roomId: roomFromUrl, name: name });
+    myPlayerId = data.playerId;
+    myRoomId = data.roomId;
+    view = 'playing';
+    startPolling();
+  } catch (e) {
+    document.getElementById('joinError').innerHTML = '<div class="error-box">' + e.message + '</div>';
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  poll();
+  pollTimer = setInterval(poll, 1200);
+}
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+let lastState = null;
+async function poll() {
+  try {
+    const data = await api('state', { roomId: myRoomId });
+    lastState = data.state;
+    if (lastState.status === 'waiting') {
+      // still waiting for player 2; stay on create-wait screen
+      return;
+    }
+    if (view !== 'playing') {
+      view = 'playing';
+    }
+    renderGame(lastState);
+  } catch (e) {
+    stopPolling();
+    showError(e.message);
+  }
+}
+
+// ---------------- Game rendering (online) ----------------
+function renderGame(state) {
+  historyCard.style.display = 'block';
+  const myId = myPlayerId;
+  const isSolo = !state.players.p2;
+  const oppId = isSolo ? null : (myId === 'p1' ? 'p2' : 'p1');
+  const me = state.players[myId];
+  const opp = isSolo ? null : state.players[oppId];
+
+  if (state.status === 'ended') {
+    stopPolling();
+    return renderEnded(state);
+  }
+
+  const iAnswered = !!state.answeredFlags[myId];
+  const oppAnswered = isSolo ? false : !!state.answeredFlags[oppId];
+
+  let body = '';
+  body += '<div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>';
+  body += '<div class="country-name">' + (state.current ? state.current.name : '…') + '</div>';
+
+  if (state.status === 'in_progress') {
+    const secsLeft = Math.max(0, Math.ceil((state.roundDeadline - Date.now()) / 1000));
+    body += '<div class="timer-display' + (secsLeft <= 10 ? ' low' : '') + '">Time left: 0:' + (secsLeft < 10 ? '0' + secsLeft : secsLeft) + '</div>';
+
+    body += '<div class="player-box' + (iAnswered ? ' answered' : '') + '">';
+    body += '<div class="player-box-name"><span>' + me.name + (isSolo ? '' : ' (you)') + '</span><span>' + me.totalScore + ' pts</span></div>';
+    if (iAnswered) {
+      body += '<div class="waiting-note">' + (isSolo ? 'Moving to the next round…' : ('Answer submitted — waiting for ' + opp.name + '…')) + '</div>';
+    } else {
+      body += '<div class="guess-row"><input type="text" id="guessInput" placeholder="Type your guess, e.g. 5" inputmode="numeric" autocomplete="off"><button class="btn" id="submitGuessBtn">Guess</button></div>';
+      body += '<div class="quick-multiply">' +
+        '<span class="quick-multiply-label">Quick entry:</span>' +
+        '<button class="btn-chip" data-mult="1000" type="button">&times; Thousand</button>' +
+        '<button class="btn-chip" data-mult="1000000" type="button">&times; Million</button>' +
+        '<button class="btn-chip" data-mult="1000000000" type="button">&times; Billion</button>' +
+        '<button class="btn-chip btn-chip-clear" id="clearGuessBtn" type="button">Clear</button>' +
+        '</div>';
+    }
+    body += '</div>';
+
+    if (!isSolo) {
+      body += '<div class="player-box' + (oppAnswered ? ' answered' : '') + '">';
+      body += '<div class="player-box-name"><span>' + opp.name + '</span><span>' + opp.totalScore + ' pts</span></div>';
+      body += '<div class="waiting-note">' + (oppAnswered ? 'Has answered this round.' : 'Still guessing…') + '</div>';
+      body += '</div>';
+    }
+  } else if (state.status === 'revealing') {
+    const roundEntries = state.history.filter(h => h.round === state.round);
+    const secsLeft = Math.max(0, Math.ceil((state.revealUntil - Date.now()) / 1000));
+    body += '<div class="result show">' + roundEntries.map(h => {
+      const scoreColor = h.score >= 80 ? 'var(--good)' : (h.score >= 40 ? 'var(--accent)' : 'var(--bad)');
+      const winner = roundEntries.length === 2 && roundEntries[0].score !== roundEntries[1].score && h.score === Math.max(roundEntries[0].score, roundEntries[1].score) ? '<span class="winner-tag">Round winner</span>' : '';
+      const detail = h.timedOut ? 'Ran out of time — no answer submitted.' :
+        ('Actual population: <b>' + fmt(h.actual) + '</b><br>Guess: <b>' + fmt(h.guess) + '</b><br>Off by <b>' + h.pct.toFixed(1) + '%</b>');
+      return '<div class="result-player"><div class="result-player-name">' + h.playerName + (h.playerId === myId ? ' (you)' : '') + winner + '</div>' +
+        '<div class="result-score" style="color:' + scoreColor + ';">' + h.score + ' points</div>' +
+        '<div class="result-detail">' + detail + '</div></div>';
+    }).join('') + '</div>';
+    body += '<p class="note">Next round in ' + secsLeft + 's…</p>';
+  }
+
+  body += '<div class="stats-row">' +
+    statGroup(me.name + (isSolo ? '' : ' (you)'), me, state.round) +
+    (isSolo ? '' : statGroup(opp.name, opp, state.round)) +
+    '</div>';
+
+  body += '<div class="actions"><button class="btn btn-secondary" id="endGameBtn">End Game</button></div>';
+
+  app.innerHTML = body;
+
+  if (state.status === 'in_progress' && !iAnswered) {
+    document.getElementById('guessInput').focus();
+    document.getElementById('submitGuessBtn').addEventListener('click', submitOnlineGuess);
+    document.getElementById('guessInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitOnlineGuess(); });
+    document.getElementById('clearGuessBtn').addEventListener('click', () => { document.getElementById('guessInput').value = ''; document.getElementById('guessInput').focus(); });
+    document.querySelectorAll('.btn-chip[data-mult]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById('guessInput');
+        const current = parseGuess(input.value);
+        const base = current === null ? 1 : current;
+        input.value = fmt(base * Number(btn.dataset.mult));
+        input.focus();
+      });
+    });
+  }
+
+  document.getElementById('endGameBtn').addEventListener('click', endGame);
+
+  updateHistoryUI(state, myId);
+}
+
+async function endGame() {
+  try {
+    const data = await api('end', { roomId: myRoomId });
+    lastState = data.state;
+    renderGame(lastState);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function statGroup(name, player, roundsPlayed) {
+  const rounds = Math.max(0, roundsPlayed - (lastState && lastState.status === 'in_progress' ? 1 : 0));
+  const avg = rounds ? Math.round(player.totalScore / rounds) : 0;
+  return '<div class="stats-group"><div class="stats-group-name">' + name + '</div>' +
+    '<div class="stats-group-values">' +
+      '<div class="stat"><div class="stat-value">' + rounds + '</div><div class="stat-label">Rounds</div></div>' +
+      '<div class="stat"><div class="stat-value">' + player.totalScore + '</div><div class="stat-label">Total</div></div>' +
+      '<div class="stat"><div class="stat-value">' + avg + '</div><div class="stat-label">Avg</div></div>' +
+    '</div></div>';
+}
+
+let submittingGuess = false;
+async function submitOnlineGuess() {
+  if (submittingGuess) return;
+  const input = document.getElementById('guessInput');
+  const guess = parseGuess(input.value);
+  if (guess === null) { input.focus(); return; }
+  submittingGuess = true;
+  try {
+    const data = await api('guess', { roomId: myRoomId, playerId: myPlayerId, guess: guess });
+    lastState = data.state;
+    renderGame(lastState);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    submittingGuess = false;
+  }
+}
+
+function updateHistoryUI(state, myId) {
+  const listEl = document.getElementById('historyList');
+  const entries = state.history.slice().reverse();
+  const colorFor = pid => pid === myId ? '#5eead4' : '#f472b6';
+  if (entries.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">Guesses will show up here as you play.</div>';
+  } else {
+    listEl.innerHTML = entries.map(h => (
+      '<div class="history-item"><span><span class="swatch" style="background:' + colorFor(h.playerId) + '"></span>' +
+        h.playerName + (h.playerId === myId ? ' (you)' : '') + ' — ' + h.name + '</span>' +
+        '<span class="pts">' + h.score + ' pts</span></div>'
+    )).join('');
+  }
+  updateChart(state, myId, colorFor);
+}
+
+const CHART_LOG_MAX = Math.log10(1500000000);
+function logPct(value) {
+  const v = Math.max(1, value || 1);
+  return Math.min(100, Math.max(0, (Math.log10(v) / CHART_LOG_MAX) * 100));
+}
+function updateChart(state, myId, colorFor) {
+  const el = document.getElementById('historyChart');
+  const entries = state.history.slice().reverse();
+  if (entries.length === 0) {
+    el.innerHTML = '<div class="chart-empty">Guesses will show up here as you play.</div>';
+    return;
+  }
+  el.innerHTML = entries.map(h => {
+    const guessPct = h.guess === null ? 0 : logPct(h.guess);
+    const actualPct = logPct(h.actual);
+    const label = h.playerName + (h.playerId === myId ? ' (you)' : '') + ' — ' + h.name;
+    const detail = h.guess === null ? 'no answer vs ' + fmt(h.actual) + ' actual' : (fmt(h.guess) + ' guess vs ' + fmt(h.actual) + ' actual');
+    return '<div class="chart-row"><div class="chart-row-label"><span class="name">' + label + '</span><span class="pct">' + detail + '</span></div>' +
+      '<div class="chart-bar-track">' +
+      '<div class="chart-bar-fill" style="width:' + guessPct + '%; background:' + colorFor(h.playerId) + '; opacity:0.9;"></div>' +
+      '<div class="chart-bar-fill" style="left:calc(' + actualPct + '% - 1px); width:2px; background:#ffffff;"></div>' +
+      '</div></div>';
+  }).join('');
+}
+
+// ---------------- End screen ----------------
+function renderEnded(state) {
+  const myId = myPlayerId;
+  const isSolo = !state.players.p2;
+  const oppId = isSolo ? null : (myId === 'p1' ? 'p2' : 'p1');
+  const me = state.players[myId];
+  const opp = isSolo ? null : state.players[oppId];
+
+  let banner = '';
+  if (isSolo) {
+    banner = '<div class="winner-banner">Nice work — game complete!</div>';
+  } else if (me.totalScore === opp.totalScore) {
+    banner = '<div class="winner-banner">It\'s a tie!</div>';
+  } else {
+    banner = '<div class="winner-banner">' + (me.totalScore > opp.totalScore ? me.name + ' (you)' : opp.name) + ' wins!</div>';
+  }
+
+  let html = '<div class="round-label">Game Over</div><div class="country-name" style="font-size:1.6rem;">Here\'s how it went</div>';
+  html += banner;
+  html += '<div class="end-stats">' +
+    endCard(me.name + (isSolo ? '' : ' (you)'), me, state.round) +
+    (isSolo ? '' : endCard(opp.name, opp, state.round)) +
+    '</div>';
+  html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
+    '<p class="map-note">Dots are placed by each country\'s approximate center; green = very close, teal = decent, red = far off.</p></div>';
+  html += '<div class="actions" style="margin-top:24px;"><button class="btn" id="playAgainBtn">Play Again</button></div>';
+
+  app.innerHTML = html;
+  renderMap(state, myId);
+  document.getElementById('playAgainBtn').addEventListener('click', () => {
+    history.replaceState(null, '', location.pathname);
+    myPlayerId = null;
+    myRoomId = null;
+    lastState = null;
+    landingMode = null;
+    view = 'landing';
+    render();
+  });
+  updateHistoryUI(state, myId);
+}
+
+function endCard(name, player, rounds) {
+  const avg = rounds ? Math.round(player.totalScore / rounds) : 0;
+  return '<div class="end-player-card"><h3 style="margin:0 0 10px 0;">' + name + '</h3>' +
+    '<div class="big-score">' + player.totalScore + '</div>' +
+    '<div class="stat-label">total points over ' + rounds + ' rounds (avg ' + avg + ')</div></div>';
+}
+
+function renderMap(state, myId) {
+  const width = 720, height = 360;
+  const lines = [];
+  for (let x = 0; x <= width; x += 60) lines.push('<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + height + '" stroke="#16233d" stroke-width="1"/>');
+  for (let y = 0; y <= height; y += 60) lines.push('<line x1="0" y1="' + y + '" x2="' + width + '" y2="' + y + '" stroke="#16233d" stroke-width="1"/>');
+  const dots = [];
+  state.history.forEach(h => {
+    const coords = CENTROIDS[h.name];
+    if (!coords) return;
+    const x = (coords[0] + 180) / 360 * width;
+    const y = (90 - coords[1]) / 180 * height;
+    const color = h.score >= 80 ? '#4ade80' : (h.score >= 40 ? '#5eead4' : '#f87171');
+    const shape = h.playerId === myId
+      ? '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="5" fill="' + color + '" fill-opacity="0.9" stroke="#0b1a2e" stroke-width="1"><title>' + h.playerName + ' — ' + h.name + ': ' + h.score + ' pts</title></circle>'
+      : '<rect x="' + (x - 4).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" width="8" height="8" fill="' + color + '" fill-opacity="0.9" stroke="#0b1a2e" stroke-width="1"><title>' + h.playerName + ' — ' + h.name + ': ' + h.score + ' pts</title></rect>';
+    dots.push(shape);
+  });
+  document.getElementById('mapContainer').innerHTML =
+    '<svg viewBox="0 0 ' + width + ' ' + height + '" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="#0b1a2e"/>' + lines.join('') + dots.join('') + '</svg>';
+}
+
+// ---------------- Boot ----------------
+if (roomFromUrl) {
+  view = 'join';
+} else {
+  view = 'landing';
+}
+render();
+</script>
+
+</body>
 </html>
