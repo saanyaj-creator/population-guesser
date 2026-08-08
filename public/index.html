@@ -314,6 +314,18 @@ async function poll() {
 
 // ---------------- Game rendering (online) ----------------
 function renderGame(state) {
+  // Polling rebuilds this whole panel every ~1.2s (to catch the timer ticking
+  // and, in 2-player mode, the other player's status). Without this, anything
+  // typed into the guess box gets wiped out mid-keystroke by the next poll.
+  // Capture it here and restore it after the rebuild below.
+  const prevInput = document.getElementById('guessInput');
+  const preservedGuess = prevInput ? {
+    value: prevInput.value,
+    selectionStart: prevInput.selectionStart,
+    selectionEnd: prevInput.selectionEnd,
+    focused: document.activeElement === prevInput
+  } : null;
+
   historyCard.style.display = 'block';
   const myId = myPlayerId;
   const isSolo = !state.players.p2;
@@ -384,7 +396,16 @@ function renderGame(state) {
   app.innerHTML = body;
 
   if (state.status === 'in_progress' && !iAnswered) {
-    document.getElementById('guessInput').focus();
+    const newInput = document.getElementById('guessInput');
+    if (preservedGuess) {
+      newInput.value = preservedGuess.value;
+      if (preservedGuess.focused) {
+        newInput.focus();
+        try { newInput.setSelectionRange(preservedGuess.selectionStart, preservedGuess.selectionEnd); } catch (e) {}
+      }
+    } else {
+      newInput.focus();
+    }
     document.getElementById('submitGuessBtn').addEventListener('click', submitOnlineGuess);
     document.getElementById('guessInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitOnlineGuess(); });
     document.getElementById('clearGuessBtn').addEventListener('click', () => { document.getElementById('guessInput').value = ''; document.getElementById('guessInput').focus(); });
