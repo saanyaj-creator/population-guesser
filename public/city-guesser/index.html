@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>City Guesser</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --accent: #38bdf8;
+    --accent-2: #22c55e;
+    --danger: #ef4444;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --p1: #ef4444;
+    --p2: #3b82f6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+  }
+  #map { position: absolute; inset: 0; }
+
+  #hud {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 18px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    max-width: 320px;
+  }
+  #hud .row { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+  #hud .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  #hud .value { font-size: 20px; font-weight: 700; }
+  #hud .value .p1 { color: var(--p1); }
+  #hud .value .p2 { color: var(--p2); }
+
+  #prompt {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    max-width: 70vw;
+  }
+  #prompt .sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
+  .player-switch {
+    position: absolute;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: none;
+    gap: 10px;
+  }
+  .player-btn {
+    background: #1e293b;
+    border: 2px solid #334155;
+    color: var(--text);
+    padding: 8px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0.55;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+  }
+  .player-btn.active { opacity: 1; }
+
+  #guessBtn {
+    position: absolute;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: var(--accent);
+    color: #06202f;
+    border: none;
+    border-radius: 999px;
+    padding: 14px 40px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
+    transition: transform 0.1s ease, opacity 0.2s ease;
+  }
+  #guessBtn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+  #guessBtn:not(:disabled):hover { transform: translateX(-50%) scale(1.04); }
+
+  #resultPanel {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 18px 26px;
+    width: min(460px, 90vw);
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    display: none;
+  }
+  #resultPanel.show { display: block; }
+  #resultPanel h2 { margin: 0 0 4px; font-size: 17px; }
+  #resultPanel .distance { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  #resultPanel .points { font-size: 22px; font-weight: 800; color: var(--accent-2); margin-bottom: 12px; line-height: 1.5; }
+  #resultPanel .winner-note { font-size: 13px; color: var(--muted); }
+  #resultPanel button {
+    background: var(--accent);
+    color: #06202f;
+    border: none;
+    border-radius: 999px;
+    padding: 10px 28px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2000;
+    background: radial-gradient(circle at top, #1e293b, #0f172a 70%);
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-direction: column;
+    text-align: center;
+    padding: 50px 20px 40px;
+    overflow-y: auto;
+  }
+  #overlay.hidden { display: none; }
+  .overlay-inner { width: min(640px, 92vw); }
+  #overlay h1 { font-size: 42px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  #overlay h1 span { color: var(--accent); }
+  #overlay p { color: var(--muted); max-width: 480px; margin: 0 auto 20px; line-height: 1.5; }
+  #overlay button {
+    background: var(--accent);
+    color: #06202f;
+    border: none;
+    border-radius: 999px;
+    padding: 16px 44px;
+    font-size: 18px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 6px 24px rgba(56, 189, 248, 0.4);
+  }
+  #overlay .ghost-btn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid #334155;
+    box-shadow: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 20px;
+  }
+
+  .mode-toggle { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; }
+  .mode-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: var(--text);
+    padding: 10px 22px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .mode-btn.active { background: var(--accent); color: #06202f; border-color: var(--accent); }
+
+  #nameInputs { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; flex-wrap: wrap; }
+  #nameInputs input {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: var(--text);
+    padding: 9px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    width: 160px;
+    text-align: center;
+  }
+
+  .history-teaser { color: var(--muted); font-size: 13px; margin-top: 22px; }
+
+  .winner-line { font-size: 18px; color: var(--accent-2); font-weight: 700; margin: -6px auto 14px; }
+  .score-summary { display: flex; gap: 26px; justify-content: center; margin-bottom: 6px; font-size: 15px; }
+  .score-summary strong { font-size: 22px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .percentile { color: var(--muted); font-size: 13px; margin: 10px auto 4px; line-height: 1.6; }
+
+  #reviewMap {
+    height: 260px;
+    width: 100%;
+    max-width: 600px;
+    border-radius: 10px;
+    margin: 16px auto;
+    border: 1px solid #334155;
+  }
+
+  .section-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 26px 0 8px; text-align: left; }
+
+  .summary-table { border-collapse: collapse; margin: 0 auto 8px; font-size: 13px; width: 100%; }
+  .summary-table th, .summary-table td { padding: 7px 12px; border-bottom: 1px solid #334155; text-align: left; }
+  .summary-table th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .summary-table tr.current-play { background: rgba(56, 189, 248, 0.12); }
+
+  .end-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+
+  .leaflet-popup-content-wrapper { background: #1e293b; color: var(--text); }
+  .leaflet-popup-tip { background: #1e293b; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="prompt">
+  <div id="promptCity">Loading...</div>
+  <div class="sub" id="promptSub">Click anywhere on the map to drop your pin</div>
+</div>
+
+<div id="hud">
+  <div class="row">
+    <div>
+      <div class="label">Round</div>
+      <div class="value" id="roundValue">1 / 5</div>
+    </div>
+    <div>
+      <div class="label">Score</div>
+      <div class="value" id="scoreValue">0</div>
+    </div>
+  </div>
+</div>
+
+<div id="playerSwitch" class="player-switch"></div>
+
+<button id="guessBtn" disabled>Place a pin to guess</button>
+
+<div id="resultPanel">
+  <h2 id="resultCity"></h2>
+  <div class="distance" id="resultDistance"></div>
+  <div class="points" id="resultPoints"></div>
+  <button id="nextBtn">Next City →</button>
+</div>
+
+<div id="overlay"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // City data: [name, country, lat, lng]
+  // ---------------------------------------------------------------------
+  const CITIES = [
+    ['Paris', 'France', 48.8566, 2.3522],
+    ['London', 'United Kingdom', 51.5074, -0.1278],
+    ['New York', 'United States', 40.7128, -74.0060],
+    ['Tokyo', 'Japan', 35.6762, 139.6503],
+    ['Sydney', 'Australia', -33.8688, 151.2093],
+    ['Cairo', 'Egypt', 30.0444, 31.2357],
+    ['Rio de Janeiro', 'Brazil', -22.9068, -43.1729],
+    ['Moscow', 'Russia', 55.7558, 37.6173],
+    ['Beijing', 'China', 39.9042, 116.4074],
+    ['Mumbai', 'India', 19.0760, 72.8777],
+    ['Cape Town', 'South Africa', -33.9249, 18.4241],
+    ['Toronto', 'Canada', 43.6532, -79.3832],
+    ['Mexico City', 'Mexico', 19.4326, -99.1332],
+    ['Buenos Aires', 'Argentina', -34.6037, -58.3816],
+    ['Berlin', 'Germany', 52.5200, 13.4050],
+    ['Rome', 'Italy', 41.9028, 12.4964],
+    ['Bangkok', 'Thailand', 13.7563, 100.5018],
+    ['Istanbul', 'Turkey', 41.0082, 28.9784],
+    ['Seoul', 'South Korea', 37.5665, 126.9780],
+    ['Nairobi', 'Kenya', -1.2921, 36.8219],
+    ['Lagos', 'Nigeria', 6.5244, 3.3792],
+    ['Jakarta', 'Indonesia', -6.2088, 106.8456],
+    ['Dubai', 'United Arab Emirates', 25.2048, 55.2708],
+    ['Singapore', 'Singapore', 1.3521, 103.8198],
+    ['Vancouver', 'Canada', 49.2827, -123.1207],
+    ['Madrid', 'Spain', 40.4168, -3.7038],
+    ['Amsterdam', 'Netherlands', 52.3676, 4.9041],
+    ['Vienna', 'Austria', 48.2082, 16.3738],
+    ['Lima', 'Peru', -12.0464, -77.0428],
+    ['Santiago', 'Chile', -33.4489, -70.6693],
+    ['Reykjavik', 'Iceland', 64.1466, -21.9426],
+    ['Wellington', 'New Zealand', -41.2865, 174.7762],
+    ['Helsinki', 'Finland', 60.1699, 24.9384],
+    ['Athens', 'Greece', 37.9838, 23.7275],
+    ['Lisbon', 'Portugal', 38.7223, -9.1393],
+    ['Warsaw', 'Poland', 52.2297, 21.0122],
+    ['Prague', 'Czechia', 50.0755, 14.4378],
+    ['Casablanca', 'Morocco', 33.5731, -7.5898],
+    ['Manila', 'Philippines', 14.5995, 120.9842],
+    ['Kuala Lumpur', 'Malaysia', 3.1390, 101.6869],
+    ['Hanoi', 'Vietnam', 21.0278, 105.8342],
+    ['Montreal', 'Canada', 45.5017, -73.5673],
+    ['Chicago', 'United States', 41.8781, -87.6298],
+    ['Los Angeles', 'United States', 34.0522, -118.2437],
+    ['Johannesburg', 'South Africa', -26.2041, 28.0473],
+    ['Dublin', 'Ireland', 53.3498, -6.2603],
+    ['Stockholm', 'Sweden', 59.3293, 18.0686],
+  ];
+
+  const ROUNDS = 5;
+  const MAX_POINTS = 5000;
+  const EARTH_RADIUS_KM = 6371;
+  const PLAYER_COLORS = { p1: '#ef4444', p2: '#3b82f6' };
+  const ACTUAL_COLOR = '#22c55e';
+  const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}';
+  const TILE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: US National Park Service';
+  const STORAGE_KEY = 'cityGuesserHistory_v1';
+
+  // ---------------------------------------------------------------------
+  // Geo math
+  // ---------------------------------------------------------------------
+  function toRad(deg) { return (deg * Math.PI) / 180; }
+
+  function haversineKm(lat1, lng1, lat2, lng2) {
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return EARTH_RADIUS_KM * c;
+  }
+
+  function scoreForDistance(km) {
+    const points = MAX_POINTS * Math.exp(-km / 2000);
+    return Math.max(0, Math.round(points));
+  }
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function makeDotIcon(color) {
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+  }
+  const actualIcon = makeDotIcon(ACTUAL_COLOR);
+
+  // ---------------------------------------------------------------------
+  // History / leaderboard persistence (localStorage — this is a
+  // standalone file the user opens directly in their own browser, not a
+  // hosted app, so this is where "save data" lives).
+  // ---------------------------------------------------------------------
+  function loadHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  }
+  function saveHistory(arr) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable */ }
+  }
+  function recordPlay(play) {
+    const h = loadHistory();
+    h.push(play);
+    saveHistory(h);
+  }
+  function collectScorePool() {
+    const pool = [];
+    loadHistory().forEach((p) => {
+      if (typeof p.totals.p1 === 'number') pool.push(p.totals.p1);
+      if (p.mode === '2p' && typeof p.totals.p2 === 'number') pool.push(p.totals.p2);
+    });
+    return pool;
+  }
+  function getPercentile(score, pool) {
+    if (!pool.length) return null;
+    let less = 0, equal = 0;
+    pool.forEach((s) => { if (s < score) less++; else if (s === score) equal++; });
+    return Math.round(((less + 0.5 * equal) / pool.length) * 100);
+  }
+
+  // ---------------------------------------------------------------------
+  // Map setup
+  // ---------------------------------------------------------------------
+  const map = L.map('map', {
+    worldCopyJump: true,
+    minZoom: 2,
+    maxZoom: 8,
+  }).setView([20, 0], 2);
+
+  // Physical basemap only: terrain, elevation, rivers, coastlines.
+  // No city labels, place names, or political borders.
+  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 8 }).addTo(map);
+
+  // ---------------------------------------------------------------------
+  // DOM references
+  // ---------------------------------------------------------------------
+  const promptCityEl = document.getElementById('promptCity');
+  const promptSubEl = document.getElementById('promptSub');
+  const roundValueEl = document.getElementById('roundValue');
+  const scoreValueEl = document.getElementById('scoreValue');
+  const guessBtn = document.getElementById('guessBtn');
+  const resultPanel = document.getElementById('resultPanel');
+  const resultCity = document.getElementById('resultCity');
+  const resultDistance = document.getElementById('resultDistance');
+  const resultPoints = document.getElementById('resultPoints');
+  const nextBtn = document.getElementById('nextBtn');
+  const overlay = document.getElementById('overlay');
+  const playerSwitchEl = document.getElementById('playerSwitch');
+
+  // ---------------------------------------------------------------------
+  // Game state
+  // ---------------------------------------------------------------------
+  let mode = '1p'; // '1p' | '2p'
+  let playerNames = { p1: 'Player 1', p2: 'Player 2' };
+  let sequence = [];
+  let roundIndex = 0;
+  let totals = { p1: 0, p2: 0 };
+  let gameRounds = [];
+  let guesses = { p1: null, p2: null };
+  let guessMarkers = { p1: null, p2: null };
+  let actualMarker = null;
+  let roundLines = [];
+  let activePlayer = 'p1';
+  let awaitingGuess = true;
+  let reviewMapInstance = null;
+
+  function activePids() { return mode === '2p' ? ['p1', 'p2'] : ['p1']; }
+  function currentCity() { return sequence[roundIndex]; }
+
+  // ---------------------------------------------------------------------
+  // Setup screen
+  // ---------------------------------------------------------------------
+  function historySummaryHTML() {
+    const h = loadHistory();
+    if (h.length === 0) return '<p class="history-teaser">No games played yet on this device — this will be your first!</p>';
+    const best = Math.max(...h.map((p) => (p.mode === '2p' ? Math.max(p.totals.p1, p.totals.p2) : p.totals.p1)));
+    return `<p class="history-teaser">You've played ${h.length} game${h.length === 1 ? '' : 's'} on this device. Best score: ${best.toLocaleString()}.</p>`;
+  }
+
+  function renderSetupScreen() {
+    overlay.innerHTML = `
+      <div class="overlay-inner">
+        <h1>City <span>Guesser</span></h1>
+        <p>You'll be given the name of a city. Click on the map to drop your pin as close as you can to it. Score up to 5,000 points per round based on how close your guess is. 5 rounds per game.</p>
+        <div class="mode-toggle">
+          <button class="mode-btn ${mode === '1p' ? 'active' : ''}" data-mode="1p">1 Player</button>
+          <button class="mode-btn ${mode === '2p' ? 'active' : ''}" data-mode="2p">2 Players</button>
+        </div>
+        <div id="nameInputs" style="${mode === '2p' ? '' : 'display:none'}">
+          <input id="p1Name" placeholder="Player 1 name" value="${playerNames.p1}" maxlength="20" />
+          <input id="p2Name" placeholder="Player 2 name" value="${playerNames.p2}" maxlength="20" />
+        </div>
+        <button id="startBtn">Start Game</button>
+        ${historySummaryHTML()}
+      </div>
+    `;
+    overlay.classList.remove('hidden');
+
+    overlay.querySelectorAll('.mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        captureNameInputs();
+        mode = btn.dataset.mode;
+        renderSetupScreen();
+      });
+    });
+    document.getElementById('startBtn').addEventListener('click', () => {
+      captureNameInputs();
+      startGame();
+    });
+  }
+
+  function captureNameInputs() {
+    const p1Input = document.getElementById('p1Name');
+    const p2Input = document.getElementById('p2Name');
+    if (p1Input && p1Input.value.trim()) playerNames.p1 = p1Input.value.trim();
+    if (p2Input && p2Input.value.trim()) playerNames.p2 = p2Input.value.trim();
+  }
+
+  // ---------------------------------------------------------------------
+  // Game flow
+  // ---------------------------------------------------------------------
+  function startGame() {
+    sequence = shuffle(CITIES).slice(0, ROUNDS);
+    roundIndex = 0;
+    totals = { p1: 0, p2: 0 };
+    gameRounds = [];
+    overlay.classList.add('hidden');
+    startRound();
+  }
+
+  function startRound() {
+    awaitingGuess = true;
+    activePlayer = 'p1';
+    guesses = { p1: null, p2: null };
+    clearMarkers();
+    map.setView([20, 0], 2);
+
+    const [name, country] = currentCity();
+    promptCityEl.textContent = `Find: ${name}, ${country}`;
+    promptSubEl.textContent = mode === '2p'
+      ? 'Pick a player below, then click the map to place their pin — do it for both before submitting'
+      : 'Click anywhere on the map to drop your pin';
+    roundValueEl.textContent = `${roundIndex + 1} / ${ROUNDS}`;
+    resultPanel.classList.remove('show');
+
+    updateHud();
+    renderPlayerSwitch();
+    updateGuessButtonState();
+  }
+
+  function clearMarkers() {
+    if (guessMarkers.p1) { map.removeLayer(guessMarkers.p1); }
+    if (guessMarkers.p2) { map.removeLayer(guessMarkers.p2); }
+    guessMarkers = { p1: null, p2: null };
+    if (actualMarker) { map.removeLayer(actualMarker); actualMarker = null; }
+    roundLines.forEach((l) => map.removeLayer(l));
+    roundLines = [];
+  }
+
+  function updateHud() {
+    if (mode === '2p') {
+      scoreValueEl.innerHTML = `<span class="p1">${playerNames.p1}: ${totals.p1.toLocaleString()}</span><br><span class="p2">${playerNames.p2}: ${totals.p2.toLocaleString()}</span>`;
+    } else {
+      scoreValueEl.textContent = totals.p1.toLocaleString();
+    }
+  }
+
+  function renderPlayerSwitch() {
+    if (mode !== '2p') {
+      playerSwitchEl.style.display = 'none';
+      playerSwitchEl.innerHTML = '';
+      return;
+    }
+    playerSwitchEl.style.display = 'flex';
+    playerSwitchEl.innerHTML = ['p1', 'p2'].map((pid) => `
+      <button class="player-btn ${activePlayer === pid ? 'active' : ''}" data-player="${pid}" style="border-color:${PLAYER_COLORS[pid]}">
+        <span style="color:${PLAYER_COLORS[pid]}">●</span> ${playerNames[pid]}${guesses[pid] ? ' ✓' : ''}
+      </button>`).join('');
+    playerSwitchEl.querySelectorAll('.player-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activePlayer = btn.dataset.player;
+        renderPlayerSwitch();
+      });
+    });
+  }
+
+  function updateGuessButtonState() {
+    const pids = activePids();
+    const ready = pids.every((pid) => guesses[pid]);
+    guessBtn.disabled = !ready;
+    if (ready) {
+      guessBtn.textContent = mode === '2p' ? 'Submit Guesses' : 'Submit Guess';
+    } else if (mode === '2p') {
+      const placed = pids.filter((pid) => guesses[pid]).length;
+      guessBtn.textContent = `Place both pins (${placed}/2)`;
+    } else {
+      guessBtn.textContent = 'Place a pin to guess';
+    }
+  }
+
+  map.on('click', (e) => {
+    if (!awaitingGuess) return;
+    const pid = mode === '2p' ? activePlayer : 'p1';
+    guesses[pid] = e.latlng;
+    if (guessMarkers[pid]) {
+      guessMarkers[pid].setLatLng(e.latlng);
+    } else {
+      guessMarkers[pid] = L.marker(e.latlng, { icon: makeDotIcon(PLAYER_COLORS[pid]) }).addTo(map);
+    }
+    updateGuessButtonState();
+    renderPlayerSwitch();
+  });
+
+  guessBtn.addEventListener('click', () => {
+    if (guessBtn.disabled || !awaitingGuess) return;
+    submitGuess();
+  });
+
+  function submitGuess() {
+    awaitingGuess = false;
+    const [name, country, lat, lng] = currentCity();
+    const roundEntry = { name, country, lat, lng, guesses: {} };
+    const boundsPoints = [[lat, lng]];
+
+    activePids().forEach((pid) => {
+      const gl = guesses[pid];
+      const guessLng = ((gl.lng + 180) % 360 + 360) % 360 - 180; // normalize dateline wraparound
+      const guessLat = Math.max(-90, Math.min(90, gl.lat));
+      const distanceKm = haversineKm(guessLat, guessLng, lat, lng);
+      const points = scoreForDistance(distanceKm);
+      totals[pid] += points;
+      roundEntry.guesses[pid] = { lat: guessLat, lng: guessLng, distanceKm, points };
+
+      const line = L.polyline([[guessLat, guessLng], [lat, lng]], {
+        color: PLAYER_COLORS[pid], weight: 2, dashArray: '6,6',
+      }).addTo(map);
+      roundLines.push(line);
+      boundsPoints.push([guessLat, guessLng]);
+    });
+
+    actualMarker = L.marker([lat, lng], { icon: actualIcon }).addTo(map);
+    gameRounds.push(roundEntry);
+    map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
+
+    renderResultPanel(roundEntry);
+    updateHud();
+    guessBtn.disabled = true;
+  }
+
+  function renderResultPanel(roundEntry) {
+    resultCity.textContent = `${roundEntry.name}, ${roundEntry.country}`;
+    if (mode === '1p') {
+      const g = roundEntry.guesses.p1;
+      resultDistance.textContent = `Your pin was ${g.distanceKm.toFixed(1)} km away`;
+      resultPoints.textContent = `+${g.points.toLocaleString()} points`;
+    } else {
+      const g1 = roundEntry.guesses.p1, g2 = roundEntry.guesses.p2;
+      resultDistance.innerHTML = `<span style="color:${PLAYER_COLORS.p1}">${playerNames.p1}</span>: ${g1.distanceKm.toFixed(1)} km &nbsp;·&nbsp; <span style="color:${PLAYER_COLORS.p2}">${playerNames.p2}</span>: ${g2.distanceKm.toFixed(1)} km`;
+      const winner = g1.points === g2.points ? 'Tie this round' : `${g1.points > g2.points ? playerNames.p1 : playerNames.p2} wins this round`;
+      resultPoints.innerHTML = `<span style="color:${PLAYER_COLORS.p1}">+${g1.points.toLocaleString()}</span> &nbsp;·&nbsp; <span style="color:${PLAYER_COLORS.p2}">+${g2.points.toLocaleString()}</span><br><span class="winner-note">${winner}</span>`;
+    }
+    resultPanel.classList.add('show');
+  }
+
+  nextBtn.addEventListener('click', () => {
+    roundIndex += 1;
+    if (roundIndex >= ROUNDS) {
+      finishGame();
+    } else {
+      startRound();
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // End of game: record history, show summary + review map + leaderboard
+  // ---------------------------------------------------------------------
+  function buildPlayRecord() {
+    let winner = null;
+    if (mode === '2p') {
+      winner = totals.p1 > totals.p2 ? 'p1' : totals.p2 > totals.p1 ? 'p2' : 'tie';
+    }
+    return {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+      mode,
+      players: mode === '2p'
+        ? [{ id: 'p1', name: playerNames.p1 }, { id: 'p2', name: playerNames.p2 }]
+        : [{ id: 'p1', name: playerNames.p1 }],
+      rounds: gameRounds,
+      totals: mode === '2p' ? { p1: totals.p1, p2: totals.p2 } : { p1: totals.p1, p2: null },
+      winner,
+    };
+  }
+
+  function finishGame() {
+    resultPanel.classList.remove('show');
+    const poolBefore = collectScorePool();
+    const play = buildPlayRecord();
+    recordPlay(play);
+    renderEndScreen(play, poolBefore);
+  }
+
+  function percentileLine(label, score, pool) {
+    const pct = getPercentile(score, pool);
+    if (pct === null) return `${label ? label + ': ' : ''}first game recorded on this device.`;
+    return `${label ? label + ': ' : ''}better than <strong>${pct}%</strong> of ${pool.length} previous game${pool.length === 1 ? '' : 's'}.`;
+  }
+
+  function renderEndScreen(play, poolBefore) {
+    const headerHTML = mode === '2p'
+      ? `<h1>Game <span>Over</span></h1><p class="winner-line">${play.winner === 'tie' ? 'Tie game!' : `${playerNames[play.winner]} wins!`}</p>`
+      : `<h1>Game <span>Over</span></h1>`;
+
+    const scoresHTML = mode === '2p'
+      ? `<div class="score-summary">
+           <div><span class="dot" style="background:${PLAYER_COLORS.p1}"></span>${playerNames.p1}: <strong>${play.totals.p1.toLocaleString()}</strong></div>
+           <div><span class="dot" style="background:${PLAYER_COLORS.p2}"></span>${playerNames.p2}: <strong>${play.totals.p2.toLocaleString()}</strong></div>
+         </div>`
+      : `<div class="score-summary"><div><strong style="font-size:26px;color:var(--accent-2)">${play.totals.p1.toLocaleString()}</strong> / ${(MAX_POINTS * ROUNDS).toLocaleString()}</div></div>`;
+
+    const percentileHTML = mode === '2p'
+      ? `<p class="percentile">${percentileLine(playerNames.p1, play.totals.p1, poolBefore)}<br>${percentileLine(playerNames.p2, play.totals.p2, poolBefore)}</p>`
+      : `<p class="percentile">${percentileLine('', play.totals.p1, poolBefore)}</p>`;
+
+    const roundTableHeader = mode === '1p'
+      ? `<tr><th>#</th><th>City</th><th>Distance</th><th>Points</th></tr>`
+      : `<tr><th>#</th><th>City</th><th>${playerNames.p1}</th><th>${playerNames.p2}</th></tr>`;
+    const roundRows = play.rounds.map((r, i) => {
+      if (mode === '1p') {
+        return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${r.guesses.p1.distanceKm.toFixed(1)} km</td><td>${r.guesses.p1.points.toLocaleString()}</td></tr>`;
+      }
+      return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${r.guesses.p1.distanceKm.toFixed(1)} km / ${r.guesses.p1.points.toLocaleString()}</td><td>${r.guesses.p2.distanceKm.toFixed(1)} km / ${r.guesses.p2.points.toLocaleString()}</td></tr>`;
+    }).join('');
+
+    const history = loadHistory();
+    const recentPlays = history.slice(-8).reverse();
+    const leaderboardRows = recentPlays.map((p) => {
+      const date = new Date(p.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const scoreText = p.mode === '2p'
+        ? `<span style="color:${PLAYER_COLORS.p1}">${p.players[0].name} ${p.totals.p1.toLocaleString()}</span> vs <span style="color:${PLAYER_COLORS.p2}">${p.players[1].name} ${p.totals.p2.toLocaleString()}</span>`
+        : `${p.totals.p1.toLocaleString()}`;
+      return `<tr class="${p.id === play.id ? 'current-play' : ''}"><td>${date}</td><td>${p.mode === '2p' ? '2P' : '1P'}</td><td>${scoreText}</td></tr>`;
+    }).join('');
+
+    overlay.innerHTML = `
+      <div class="overlay-inner">
+        ${headerHTML}
+        ${scoresHTML}
+        ${percentileHTML}
+        <div id="reviewMap"></div>
+        <div class="section-title">This game's rounds</div>
+        <table class="summary-table">
+          <thead>${roundTableHeader}</thead>
+          <tbody>${roundRows}</tbody>
+        </table>
+        <div class="section-title">Leaderboard — recent plays on this device</div>
+        <table class="summary-table">
+          <thead><tr><th>Date</th><th>Mode</th><th>Score</th></tr></thead>
+          <tbody>${leaderboardRows}</tbody>
+        </table>
+        <div class="end-actions">
+          <button id="startBtn">Play Again</button>
+          <button id="clearHistoryBtn" class="ghost-btn">Clear History</button>
+        </div>
+      </div>
+    `;
+    overlay.classList.remove('hidden');
+
+    requestAnimationFrame(() => renderReviewMap(play));
+
+    document.getElementById('startBtn').addEventListener('click', renderSetupScreen);
+    document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+      if (confirm('Clear all saved game history from this browser? This cannot be undone.')) {
+        localStorage.removeItem(STORAGE_KEY);
+        renderSetupScreen();
+      }
+    });
+  }
+
+  function renderReviewMap(play) {
+    if (reviewMapInstance) { reviewMapInstance.remove(); reviewMapInstance = null; }
+    reviewMapInstance = L.map('reviewMap', {
+      zoomControl: false,
+      attributionControl: false,
+      minZoom: 1,
+      maxZoom: 8,
+    }).setView([20, 0], 1);
+    L.tileLayer(TILE_URL, { maxZoom: 8 }).addTo(reviewMapInstance);
+
+    const bounds = [];
+    play.rounds.forEach((r) => {
+      L.marker([r.lat, r.lng], { icon: actualIcon }).addTo(reviewMapInstance)
+        .bindPopup(`${r.name}, ${r.country} (actual)`);
+      bounds.push([r.lat, r.lng]);
+      Object.keys(r.guesses).forEach((pid) => {
+        const g = r.guesses[pid];
+        const player = play.players.find((p) => p.id === pid);
+        L.circleMarker([g.lat, g.lng], {
+          radius: 6, color: PLAYER_COLORS[pid], fillColor: PLAYER_COLORS[pid], fillOpacity: 0.9, weight: 2,
+        }).addTo(reviewMapInstance).bindPopup(`${player ? player.name : pid}: ${g.distanceKm.toFixed(0)} km, +${g.points.toLocaleString()}`);
+        L.polyline([[g.lat, g.lng], [r.lat, r.lng]], { color: PLAYER_COLORS[pid], weight: 1, opacity: 0.6 }).addTo(reviewMapInstance);
+        bounds.push([g.lat, g.lng]);
+      });
+    });
+    if (bounds.length) reviewMapInstance.fitBounds(L.latLngBounds(bounds), { padding: [24, 24] });
+  }
+
+  renderSetupScreen();
+})();
+</script>
+</body>
+</html>
