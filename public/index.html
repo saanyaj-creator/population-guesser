@@ -241,11 +241,20 @@ function exportHistory() {
 
 // ---------------- Router ----------------
 let view = 'landing'; // landing, create-wait, join, playing
-let landingMode = null; // null | 'solo' | 'duo' — which mode is picked on the landing screen
+let landingMode = null; // null | 'solo' | 'duo' | 'local' — which mode is picked on the landing screen
 let myPlayerId = null;
 let myRoomId = null;
 let pollTimer = null;
 let lastRenderedRound = null;
+
+// Same-screen pass-and-play state. Both players share one browser tab, so
+// there's no real "me" — instead we track whose turn it is (derived from
+// the server's answeredFlags) and a local gate that hides player 1's guess
+// until player 2 has confirmed the device has been handed over.
+let localMode = false;
+let localNames = { p1: 'Player 1', p2: 'Player 2' };
+let localPassGate = false;
+let localLastRound = null;
 
 const urlParams = new URLSearchParams(location.search);
 const roomFromUrl = urlParams.get('room');
@@ -262,7 +271,8 @@ function renderLanding() {
   historyCard.style.display = 'none';
   let html = '<div class="mode-select">' +
       '<button class="mode-btn' + (landingMode === 'solo' ? ' active' : '') + '" id="btnModeSolo">1 Player</button>' +
-      '<button class="mode-btn' + (landingMode === 'duo' ? ' active' : '') + '" id="btnModeDuo">2 Players</button>' +
+      '<button class="mode-btn' + (landingMode === 'duo' ? ' active' : '') + '" id="btnModeDuo">2 Players (Online)</button>' +
+      '<button class="mode-btn' + (landingMode === 'local' ? ' active' : '') + '" id="btnModeLocal">2 Players (Same Screen)</button>' +
     '</div>';
 
   if (landingMode === 'solo') {
@@ -273,13 +283,21 @@ function renderLanding() {
     html += '<p class="note">You\'ll get a link to send to a friend on any device. You both guess the same country each round, with a 30-second timer.</p>' +
       '<div class="name-row"><input type="text" id="createNameInput" placeholder="Your name" maxlength="24"></div>' +
       '<button class="btn" id="btnDoCreate">Create Game &amp; Get Link</button>';
+  } else if (landingMode === 'local') {
+    html += '<p class="note">Take turns on one device. Player 1 guesses first and their number is hidden as soon as they submit, so Player 2 can\'t see it before taking their turn.</p>' +
+      '<div class="name-row"><input type="text" id="createNameInput1" placeholder="Player 1 name" maxlength="24"></div>' +
+      '<div class="name-row"><input type="text" id="createNameInput2" placeholder="Player 2 name" maxlength="24"></div>' +
+      '<button class="btn" id="btnDoCreateLocal">Start Game</button>';
   }
 
   app.innerHTML = html;
   document.getElementById('btnModeSolo').addEventListener('click', () => { landingMode = 'solo'; render(); });
   document.getElementById('btnModeDuo').addEventListener('click', () => { landingMode = 'duo'; render(); });
-  if (landingMode) {
+  document.getElementById('btnModeLocal').addEventListener('click', () => { landingMode = 'local'; render(); });
+  if (landingMode === 'solo' || landingMode === 'duo') {
     document.getElementById('btnDoCreate').addEventListener('click', () => doCreate(landingMode));
+  } else if (landingMode === 'local') {
+    document.getElementById('btnDoCreateLocal').addEventListener('click', doCreateLocal);
   }
 }
 
@@ -375,6 +393,28 @@ async function doCreate(mode) {
   }
 }
 
+async function doCreateLocal() {
+  const name1 = document.getElementById('createNameInput1').value.trim() || 'Player 1';
+  const name2 = document.getElementById('createNameInput2').value.trim() || 'Player 2';
+  try {
+    const created = await api('create', { name: name1, mode: 'duo' });
+    myRoomId = created.roomId;
+    await api('join', { roomId: myRoomId, name: name2 });
+    const started = await api('start', { roomId: myRoomId });
+    localMode = true;
+    localNames = { p1: name1, p2: name2 };
+    localPassGate = false;
+    localLastRound = null;
+    myPlayerId = 'p1'; // arbitrary in local mode; turn is derived from answeredFlags, not this
+    lastState = started.state;
+    view = 'playing';
+    renderGame(lastState);
+    startPolling();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
 async function doJoin() {
   const name = document.getElementById('joinNameInput').value.trim() || 'Player 2';
   try {
@@ -445,6 +485,10 @@ function renderGame(state) {
 
   if (state.status === 'ready') {
     return renderReady(state, myId, isSolo, oppId, me, opp);
+  }
+
+  if (localMode) {
+    return renderGameLocal(state, preservedGuess);
   }
 
   const iAnswered = !!state.answeredFlags[myId];
@@ -534,6 +578,137 @@ function renderGame(state) {
   updateHistoryUI(state, myId);
 }
 
+function guessBoxHtml(playerName) {
+  return '<div class="player-box">' +
+    '<div class="player-box-name"><span>' + playerName + '\'s turn</span></div>' +
+    '<div class="guess-row"><input type="text" id="guessInput" placeholder="Type your guess, e.g. 5" inputmode="numeric" autocomplete="off"><button class="btn" id="submitGuessBtn">Guess</button></div>' +
+    '<div class="quick-multiply">' +
+      '<span class="quick-multiply-label">Quick entry:</span>' +
+      '<button class="btn-chip" data-mult="1000" type="button">&times; Thousand</button>' +
+      '<button class="btn-chip" data-mult="1000000" type="button">&times; Million</button>' +
+      '<button class="btn-chip" data-mult="1000000000" type="button">&times; Billion</button>' +
+      '<button class="btn-chip btn-chip-clear" id="clearGuessBtn" type="button">Clear</button>' +
+    '</div></div>';
+}
+
+// Same-screen pass-and-play rendering. There's no single "me" here — instead
+// we look at which of p1/p2 has answered this round to decide whose turn it
+// is, and gate the handoff between them with localPassGate so player 2 never
+// sees player 1's guess box (or a lingering typed value) before they've had
+// a chance to look away.
+function renderGameLocal(state, preservedGuess) {
+  historyCard.style.display = 'block';
+  const p1 = state.players.p1, p2 = state.players.p2;
+  const p1Answered = !!state.answeredFlags.p1;
+  const p2Answered = !!state.answeredFlags.p2;
+
+  if (state.status === 'in_progress' && state.round !== localLastRound) {
+    localPassGate = false;
+    localLastRound = state.round;
+  }
+
+  let body = '';
+  body += '<div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>';
+  body += '<div class="country-name">' + (state.current ? state.current.name : '…') + '</div>';
+
+  let showingInput = false;
+  if (state.status === 'in_progress') {
+    const secsLeft = Math.max(0, Math.ceil((state.roundDeadline - Date.now()) / 1000));
+    body += '<div class="timer-display' + (secsLeft <= 10 ? ' low' : '') + '">Time left: 0:' + (secsLeft < 10 ? '0' + secsLeft : secsLeft) + '</div>';
+
+    if (!p1Answered) {
+      body += guessBoxHtml(localNames.p1);
+      showingInput = true;
+    } else if (!p2Answered && localPassGate) {
+      body += '<div class="player-box"><div class="player-box-name"><span>Pass the device</span></div>' +
+        '<p class="waiting-note">' + localNames.p1 + '\'s guess is locked in and hidden. Hand the device to ' + localNames.p2 + '.</p>' +
+        '<button class="btn" id="passReadyBtn" type="button">' + localNames.p2 + ', I\'m ready</button></div>';
+    } else if (!p2Answered) {
+      body += guessBoxHtml(localNames.p2);
+      showingInput = true;
+    } else {
+      body += '<p class="note">Both answers are in — resolving round…</p>';
+    }
+  } else if (state.status === 'revealing') {
+    const roundEntries = state.history.filter(h => h.round === state.round);
+    const secsLeft = Math.max(0, Math.ceil((state.revealUntil - Date.now()) / 1000));
+    body += '<div class="result show">' + roundEntries.map(h => {
+      const scoreColor = h.score >= 80 ? 'var(--good)' : (h.score >= 40 ? 'var(--accent)' : 'var(--bad)');
+      const winner = roundEntries.length === 2 && roundEntries[0].score !== roundEntries[1].score && h.score === Math.max(roundEntries[0].score, roundEntries[1].score) ? '<span class="winner-tag">Round winner</span>' : '';
+      const detail = h.timedOut ? 'Ran out of time — no answer submitted.' :
+        ('Actual population: <b>' + fmt(h.actual) + '</b><br>Guess: <b>' + fmt(h.guess) + '</b><br>Off by <b>' + h.pct.toFixed(1) + '%</b>');
+      return '<div class="result-player"><div class="result-player-name">' + h.playerName + winner + '</div>' +
+        '<div class="result-score" style="color:' + scoreColor + ';">' + h.score + ' points</div>' +
+        '<div class="result-detail">' + detail + '</div></div>';
+    }).join('') + '</div>';
+    body += '<p class="note">Next round in ' + secsLeft + 's…</p>';
+  }
+
+  body += '<div class="stats-row">' + statGroup(p1.name, p1, state.round) + statGroup(p2.name, p2, state.round) + '</div>';
+  body += '<div class="actions"><button class="btn btn-secondary" id="endGameBtn">End Game</button></div>';
+
+  app.innerHTML = body;
+
+  if (showingInput) {
+    const newInput = document.getElementById('guessInput');
+    if (preservedGuess) {
+      newInput.value = preservedGuess.value;
+      if (preservedGuess.focused) {
+        newInput.focus();
+        try { newInput.setSelectionRange(preservedGuess.selectionStart, preservedGuess.selectionEnd); } catch (e) {}
+      }
+    } else {
+      newInput.focus();
+    }
+    document.getElementById('submitGuessBtn').addEventListener('click', submitLocalGuess);
+    newInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitLocalGuess(); });
+    document.getElementById('clearGuessBtn').addEventListener('click', () => { newInput.value = ''; newInput.focus(); });
+    document.querySelectorAll('.btn-chip[data-mult]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const current = parseGuess(newInput.value);
+        const base = current === null ? 1 : current;
+        newInput.value = fmt(base * Number(btn.dataset.mult));
+        newInput.focus();
+      });
+    });
+  }
+
+  const passBtn = document.getElementById('passReadyBtn');
+  if (passBtn) {
+    passBtn.addEventListener('click', () => {
+      localPassGate = false;
+      renderGame(lastState);
+    });
+  }
+
+  document.getElementById('endGameBtn').addEventListener('click', endGame);
+
+  updateHistoryUI(state, null);
+}
+
+async function submitLocalGuess() {
+  if (submittingGuess) return;
+  const input = document.getElementById('guessInput');
+  const guess = parseGuess(input.value);
+  if (guess === null) { input.focus(); return; }
+  const pid = !lastState.answeredFlags.p1 ? 'p1' : 'p2';
+  submittingGuess = true;
+  try {
+    const data = await api('guess', { roomId: myRoomId, playerId: pid, guess: guess });
+    lastState = data.state;
+    if (pid === 'p1' && !data.state.answeredFlags.p2) {
+      // Player 1 just went and player 2 hasn't answered yet — hide the
+      // input behind the pass-device gate before rendering.
+      localPassGate = true;
+    }
+    renderGame(lastState);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    submittingGuess = false;
+  }
+}
+
 function renderReady(state, myId, isSolo, oppId, me, opp) {
   historyCard.style.display = 'none';
   let html = '<div class="round-label">Both players are in</div>' +
@@ -597,7 +772,7 @@ async function submitOnlineGuess() {
 function updateHistoryUI(state, myId) {
   const listEl = document.getElementById('historyList');
   const entries = state.history.slice().reverse();
-  const colorFor = pid => pid === myId ? '#5eead4' : '#f472b6';
+  const colorFor = pid => pid === 'p1' ? '#5eead4' : '#f472b6';
   if (entries.length === 0) {
     listEl.innerHTML = '<div class="empty-note">Guesses will show up here as you play.</div>';
   } else {
@@ -674,19 +849,21 @@ function renderEnded(state) {
   const me = state.players[myId];
   const opp = isSolo ? null : state.players[oppId];
 
+  const youSuffix = (isSolo || localMode) ? '' : ' (you)';
+
   let banner = '';
   if (isSolo) {
     banner = '<div class="winner-banner">Nice work — game complete!</div>';
   } else if (me.totalScore === opp.totalScore) {
     banner = '<div class="winner-banner">It\'s a tie!</div>';
   } else {
-    banner = '<div class="winner-banner">' + (me.totalScore > opp.totalScore ? me.name + ' (you)' : opp.name) + ' wins!</div>';
+    banner = '<div class="winner-banner">' + (me.totalScore > opp.totalScore ? me.name + youSuffix : opp.name) + ' wins!</div>';
   }
 
   let html = '<div class="round-label">Game Over</div><div class="country-name" style="font-size:1.6rem;">Here\'s how it went</div>';
   html += banner;
   html += '<div class="end-stats">' +
-    endCard(me.name + (isSolo ? '' : ' (you)'), me, state.round) +
+    endCard(me.name + youSuffix, me, state.round) +
     (isSolo ? '' : endCard(opp.name, opp, state.round)) +
     '</div>';
   html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
@@ -705,7 +882,7 @@ function renderEnded(state) {
   html += '<div class="actions" style="margin-top:24px;"><button class="btn" id="playAgainBtn">Play Again</button></div>';
 
   app.innerHTML = html;
-  renderMap(state, myId);
+  renderMap(state, localMode ? null : myId);
   document.getElementById('exportHistoryBtn').addEventListener('click', exportHistory);
   document.getElementById('playAgainBtn').addEventListener('click', () => {
     history.replaceState(null, '', location.pathname);
@@ -713,10 +890,13 @@ function renderEnded(state) {
     myRoomId = null;
     lastState = null;
     landingMode = null;
+    localMode = false;
+    localPassGate = false;
+    localLastRound = null;
     view = 'landing';
     render();
   });
-  updateHistoryUI(state, myId);
+  updateHistoryUI(state, localMode ? null : myId);
 }
 
 function endCard(name, player, rounds) {
