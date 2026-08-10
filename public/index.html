@@ -72,6 +72,14 @@
   .chart-row-label .pct { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
   .chart-bar-track { position: relative; background: #0d0f1c; border-radius: 6px; height: 16px; margin-bottom: 4px; overflow: hidden; }
   .chart-bar-fill { position: absolute; top: 0; left: 0; bottom: 0; border-radius: 6px; }
+  .chart-axis { position: relative; height: 16px; margin: 0 0 10px 0; border-bottom: 1px solid var(--panel-2); }
+  .chart-axis-tick { position: absolute; top: 0; transform: translateX(-50%); font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
+  .country-chart { margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--panel-2); }
+  .country-chart:last-child { border-bottom: none; }
+  .country-chart-title { font-weight: 700; font-size: 0.92rem; margin-bottom: 8px; }
+  .chart-actual-label { font-weight: 500; color: var(--muted); font-size: 0.78rem; }
+  .country-chart-body { position: relative; }
+  .chart-actual-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffffff; z-index: 2; pointer-events: none; }
   .history-list { margin-top: 18px; max-height: 220px; overflow-y: auto; }
   .history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--panel-2); font-size: 0.88rem; gap: 8px; }
   .history-item .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
@@ -435,6 +443,10 @@ function renderGame(state) {
     return renderEnded(state);
   }
 
+  if (state.status === 'ready') {
+    return renderReady(state, myId, isSolo, oppId, me, opp);
+  }
+
   const iAnswered = !!state.answeredFlags[myId];
   const oppAnswered = isSolo ? false : !!state.answeredFlags[oppId];
 
@@ -522,6 +534,27 @@ function renderGame(state) {
   updateHistoryUI(state, myId);
 }
 
+function renderReady(state, myId, isSolo, oppId, me, opp) {
+  historyCard.style.display = 'none';
+  let html = '<div class="round-label">Both players are in</div>' +
+    '<div class="country-name" style="font-size:1.6rem;">Ready to play?</div>' +
+    '<p class="note">' + me.name + ' (you) and ' + opp.name + ' have both joined. Either of you can start round 1 — 10 countries, 30 seconds each.</p>' +
+    '<button class="btn" id="startGameBtn">Start Game</button>';
+  app.innerHTML = html;
+  document.getElementById('startGameBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('startGameBtn');
+    btn.disabled = true;
+    btn.textContent = 'Starting…';
+    try {
+      const data = await api('start', { roomId: myRoomId });
+      lastState = data.state;
+      renderGame(lastState);
+    } catch (e) {
+      showError(e.message);
+    }
+  });
+}
+
 async function endGame() {
   try {
     const data = await api('end', { roomId: myRoomId });
@@ -582,24 +615,55 @@ function logPct(value) {
   const v = Math.max(1, value || 1);
   return Math.min(100, Math.max(0, (Math.log10(v) / CHART_LOG_MAX) * 100));
 }
+function fmtShort(n) {
+  if (n >= 1e9) return (n / 1e9) + 'B';
+  if (n >= 1e6) return (n / 1e6) + 'M';
+  if (n >= 1e3) return (n / 1e3) + 'K';
+  return String(n);
+}
+const CHART_AXIS_TICKS = [1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9];
+
+// One mini bar-chart per country: a horizontal bar per player showing their
+// guess (with % off in parentheses), plus a white line marking the actual
+// population. Every chart shares the same log-scale x-axis so they can be
+// compared directly, with a ruler of tick labels shown once at the top.
 function updateChart(state, myId, colorFor) {
   const el = document.getElementById('historyChart');
-  const entries = state.history.slice().reverse();
-  if (entries.length === 0) {
+  if (state.history.length === 0) {
     el.innerHTML = '<div class="chart-empty">Guesses will show up here as you play.</div>';
     return;
   }
-  el.innerHTML = entries.map(h => {
-    const guessPct = h.guess === null ? 0 : logPct(h.guess);
-    const actualPct = logPct(h.actual);
-    const label = h.playerName + (h.playerId === myId ? ' (you)' : '') + ' — ' + h.name;
-    const detail = h.guess === null ? 'no answer vs ' + fmt(h.actual) + ' actual' : (fmt(h.guess) + ' guess vs ' + fmt(h.actual) + ' actual');
-    return '<div class="chart-row"><div class="chart-row-label"><span class="name">' + label + '</span><span class="pct">' + detail + '</span></div>' +
-      '<div class="chart-bar-track">' +
-      '<div class="chart-bar-fill" style="width:' + guessPct + '%; background:' + colorFor(h.playerId) + '; opacity:0.9;"></div>' +
-      '<div class="chart-bar-fill" style="left:calc(' + actualPct + '% - 1px); width:2px; background:#ffffff;"></div>' +
+
+  const byRound = {};
+  state.history.forEach(h => {
+    if (!byRound[h.round]) byRound[h.round] = [];
+    byRound[h.round].push(h);
+  });
+  const rounds = Object.keys(byRound).map(Number).sort((a, b) => b - a);
+
+  let html = '<div class="chart-axis">' + CHART_AXIS_TICKS.map(t =>
+    '<span class="chart-axis-tick" style="left:' + logPct(t).toFixed(1) + '%;">' + fmtShort(t) + '</span>'
+  ).join('') + '</div>';
+
+  rounds.forEach(r => {
+    const group = byRound[r];
+    const actual = group[0].actual;
+    const actualPct = logPct(actual);
+    html += '<div class="country-chart">' +
+      '<div class="country-chart-title">' + group[0].name + ' <span class="chart-actual-label">actual: ' + fmt(actual) + '</span></div>' +
+      '<div class="country-chart-body">' +
+      '<div class="chart-actual-line" style="left:' + actualPct.toFixed(1) + '%;"></div>' +
+      group.map(h => {
+        const guessPct = h.guess === null ? 0 : logPct(h.guess);
+        const label = h.playerName + (h.playerId === myId ? ' (you)' : '');
+        const detail = h.timedOut ? 'no answer' : (fmt(h.guess) + ' (' + h.pct.toFixed(1) + '% off)');
+        return '<div class="chart-row"><div class="chart-row-label"><span class="name">' + label + '</span><span class="pct">' + detail + '</span></div>' +
+          '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + guessPct + '%; background:' + colorFor(h.playerId) + '; opacity:0.9;"></div></div></div>';
+      }).join('') +
       '</div></div>';
-  }).join('');
+  });
+
+  el.innerHTML = html;
 }
 
 // ---------------- End screen ----------------
@@ -626,7 +690,8 @@ function renderEnded(state) {
     (isSolo ? '' : endCard(opp.name, opp, state.round)) +
     '</div>';
   html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
-    '<p class="map-note">Dots are placed by each country\'s approximate center; green = very close, teal = decent, red = far off. Map outline: <a href="https://github.com/flekschas/simple-world-map" target="_blank" rel="noopener" style="color:var(--accent);">Simple World Map</a> (CC BY-SA 3.0).</p></div>';
+    '<p class="note" id="mapInfo">Click a dot to see the country and its actual population.</p>' +
+    '<p class="map-note">Dots are placed by each country\'s approximate center. Map outline: <a href="https://github.com/flekschas/simple-world-map" target="_blank" rel="noopener" style="color:var(--accent);">Simple World Map</a> (CC BY-SA 3.0).</p></div>';
 
   const saved = saveGameRecord(state, isSolo, myId, oppId);
   html += '<div class="leaderboard-section">' +
@@ -669,22 +734,34 @@ function projectLonLat(lon, lat) {
 
 function renderMap(state, myId) {
   const dots = [];
-  state.history.forEach(h => {
+  // Two players can guess the same country in the same round, which would
+  // land their dots exactly on top of each other — nudge each player's dot
+  // a fixed, small distance apart so both stay visible and clickable.
+  const jitter = { p1: -2.2, p2: 2.2 };
+  state.history.forEach((h, i) => {
     const coords = CENTROIDS[h.name];
     if (!coords) return;
     const p = projectLonLat(coords[0], coords[1]);
-    const x = p[0], y = p[1];
-    const color = h.score >= 80 ? '#4ade80' : (h.score >= 40 ? '#5eead4' : '#f87171');
-    const shape = h.playerId === myId
-      ? '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.2" fill="' + color + '" fill-opacity="0.95" stroke="#0b1a2e" stroke-width="0.8"><title>' + h.playerName + ' — ' + h.name + ': ' + h.score + ' pts</title></circle>'
-      : '<rect x="' + (x - 3.6).toFixed(1) + '" y="' + (y - 3.6).toFixed(1) + '" width="7.2" height="7.2" fill="' + color + '" fill-opacity="0.95" stroke="#0b1a2e" stroke-width="0.8"><title>' + h.playerName + ' — ' + h.name + ': ' + h.score + ' pts</title></rect>';
-    dots.push(shape);
+    const x = p[0] + (jitter[h.playerId] || 0);
+    const y = p[1];
+    dots.push(
+      '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.2" fill="#5eead4" fill-opacity="0.9" stroke="#0b1a2e" stroke-width="0.8" ' +
+      'data-country="' + h.name.replace(/"/g, '&quot;') + '" data-actual="' + h.actual + '" style="cursor:pointer;">' +
+      '<title>' + h.name + ' — actual population: ' + fmt(h.actual) + '</title></circle>'
+    );
   });
   document.getElementById('mapContainer').innerHTML =
     '<svg viewBox="' + WORLD_MAP_VB + '" xmlns="http://www.w3.org/2000/svg">' +
     '<rect x="30.767" y="241.591" width="784.077" height="458.627" fill="#0b1a2e"/>' +
     '<g fill="#16233d" stroke="#0d1830" stroke-width="0.6">' + WORLD_MAP_PATHS + '</g>' +
     dots.join('') + '</svg>';
+
+  const infoEl = document.getElementById('mapInfo');
+  document.querySelectorAll('#mapContainer circle').forEach(c => {
+    c.addEventListener('click', () => {
+      if (infoEl) infoEl.textContent = c.dataset.country + ' — actual population: ' + fmt(Number(c.dataset.actual));
+    });
+  });
 }
 
 // ---------------- Boot ----------------
