@@ -249,6 +249,11 @@
 
   .leaflet-popup-content-wrapper { background: #1e293b; color: var(--text); }
   .leaflet-popup-tip { background: #1e293b; }
+
+  /* Boost the base terrain tiles' saturation/contrast so land and water
+     read clearly as green/blue instead of the source tileset's muted
+     default. Doesn't affect the vector border layer (SVG, separate pane). */
+  .terrain-tiles { filter: saturate(1.8) contrast(1.15) brightness(1.04); }
 </style>
 </head>
 <body>
@@ -354,10 +359,12 @@
   const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}';
   const TILE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: USGS, Esri, TANA, DeLorme, and NPS';
   const TILE_MAX_ZOOM = 13;
-  // Transparent overlay of country borders + place labels — off by default
-  // (Hard mode) so the base map stays unlabeled, but shown at reveal after
-  // every guess, and shown throughout in Easy mode.
-  const BORDER_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+  // Country borders as clean vector lines (no raster labels, no ugly
+  // baked-in font) drawn on top of the base map — off by default (Hard
+  // mode) so the base map stays unlabeled while guessing, shown at reveal
+  // after every guess, and shown throughout in Easy mode. Natural Earth
+  // 110m country outlines, ~250KB, fetched once and cached in memory.
+  const BORDERS_GEOJSON_URL = 'https://cdn.jsdelivr.net/gh/johan/world.geo.json@master/countries.geo.json';
   const STORAGE_KEY = 'cityGuesserHistory_v1';
   const FN_ROOM = '/.netlify/functions/city-room';
   const FN_LEADERBOARD = '/.netlify/functions/city-leaderboard';
@@ -471,22 +478,42 @@
 
   // Physical basemap only: terrain, elevation, rivers, coastlines.
   // No city labels, place names, or political borders by default.
-  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM }).addTo(map);
+  // className lets CSS boost saturation/contrast so land and water read
+  // clearly as green/blue rather than the source tileset's muted default.
+  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM, className: 'terrain-tiles' }).addTo(map);
 
-  // Borders/labels overlay — added or removed on top of the base layer
-  // depending on difficulty and game phase (see showBorders/hideBorders).
-  let borderLayer = null;
+  // Borders overlay — clean vector lines (a "halo": a soft dark line under
+  // a thin bright line, so it reads on both light and dark terrain), not a
+  // raster reference layer, so there's no baked-in label font and no
+  // blurring at high zoom. Loaded once on first use and cached; added or
+  // removed from the map depending on difficulty and game phase (see
+  // showBorders/hideBorders).
+  let bordersGeoJson = null;
+  let borderLayerGroup = null;
   let bordersShown = false;
+  function loadBordersGeoJson() {
+    if (bordersGeoJson) return Promise.resolve(bordersGeoJson);
+    return fetch(BORDERS_GEOJSON_URL)
+      .then((res) => res.json())
+      .then((data) => { bordersGeoJson = data; return data; })
+      .catch(() => null);
+  }
   function showBorders() {
     if (bordersShown) return;
-    if (!borderLayer) borderLayer = L.tileLayer(BORDER_TILE_URL, { maxZoom: TILE_MAX_ZOOM, opacity: 0.85 });
-    borderLayer.addTo(map);
     bordersShown = true;
+    loadBordersGeoJson().then((data) => {
+      if (!data || !bordersShown) return; // hidden again before this finished loading
+      if (!borderLayerGroup) {
+        const halo = L.geoJSON(data, { style: { color: '#0f172a', weight: 3, opacity: 0.55, fillOpacity: 0 }, interactive: false });
+        const line = L.geoJSON(data, { style: { color: '#f8fafc', weight: 1.2, opacity: 0.95, fillOpacity: 0 }, interactive: false });
+        borderLayerGroup = L.layerGroup([halo, line]);
+      }
+      borderLayerGroup.addTo(map);
+    });
   }
   function hideBorders() {
-    if (!bordersShown) return;
-    if (borderLayer) map.removeLayer(borderLayer);
     bordersShown = false;
+    if (borderLayerGroup && map.hasLayer(borderLayerGroup)) map.removeLayer(borderLayerGroup);
   }
 
   // ---------------------------------------------------------------------
@@ -685,7 +712,7 @@
     const [name, country] = currentCity();
     promptCityEl.textContent = `Find: ${name}, ${country}`;
     promptSubEl.textContent = mode === '2p'
-      ? 'Pick a player below, then click the map to place their pin — do it for both before submitting'
+      ? "Pick a player below, then click the map to place their pin — the other player's pin stays hidden until you submit"
       : 'Click anywhere on the map to drop your pin';
     roundValueEl.textContent = `${roundIndex + 1} / ${ROUNDS}`;
     resultPanel.classList.remove('show');
@@ -704,6 +731,27 @@
     if (actualMarker) { map.removeLayer(actualMarker); actualMarker = null; }
     roundLines.forEach((l) => map.removeLayer(l));
     roundLines = [];
+  }
+
+  // In same-screen 2-player mode, only the currently active player's pin
+  // is visible on the map — switching players hides the other one's guess
+  // so neither can see where the other clicked before submitting. Both
+  // reappear together once the round is submitted (see revealAllGuessMarkers).
+  function syncGuessMarkerVisibility() {
+    ['p1', 'p2'].forEach((pid) => {
+      const marker = guessMarkers[pid];
+      if (!marker) return;
+      const shouldShow = mode !== '2p' || pid === activePlayer;
+      const isShown = map.hasLayer(marker);
+      if (shouldShow && !isShown) marker.addTo(map);
+      if (!shouldShow && isShown) map.removeLayer(marker);
+    });
+  }
+  function revealAllGuessMarkers() {
+    ['p1', 'p2'].forEach((pid) => {
+      const marker = guessMarkers[pid];
+      if (marker && !map.hasLayer(marker)) marker.addTo(map);
+    });
   }
 
   function updateHud() {
@@ -729,6 +777,7 @@
       btn.addEventListener('click', () => {
         activePlayer = btn.dataset.player;
         renderPlayerSwitch();
+        syncGuessMarkerVisibility();
       });
     });
   }
@@ -768,6 +817,7 @@
     } else {
       guessMarkers[pid] = L.marker(e.latlng, { icon: makeDotIcon(PLAYER_COLORS[pid]) }).addTo(map);
     }
+    syncGuessMarkerVisibility();
     updateGuessButtonState();
     renderPlayerSwitch();
   });
@@ -781,6 +831,7 @@
 
   function submitGuess() {
     awaitingGuess = false;
+    revealAllGuessMarkers(); // both pins become visible together at reveal
     const [name, country, lat, lng] = currentCity();
     const roundEntry = { name, country, lat, lng, guesses: {} };
     const boundsPoints = [[lat, lng]];
@@ -957,8 +1008,12 @@
       minZoom: 1,
       maxZoom: TILE_MAX_ZOOM,
     }).setView([20, 0], 1);
-    L.tileLayer(TILE_URL, { maxZoom: TILE_MAX_ZOOM }).addTo(reviewMapInstance);
-    L.tileLayer(BORDER_TILE_URL, { maxZoom: TILE_MAX_ZOOM, opacity: 0.85 }).addTo(reviewMapInstance);
+    L.tileLayer(TILE_URL, { maxZoom: TILE_MAX_ZOOM, className: 'terrain-tiles' }).addTo(reviewMapInstance);
+    loadBordersGeoJson().then((data) => {
+      if (!data || !reviewMapInstance) return;
+      L.geoJSON(data, { style: { color: '#0f172a', weight: 3, opacity: 0.5, fillOpacity: 0 }, interactive: false }).addTo(reviewMapInstance);
+      L.geoJSON(data, { style: { color: '#f8fafc', weight: 1, opacity: 0.9, fillOpacity: 0 }, interactive: false }).addTo(reviewMapInstance);
+    });
 
     const bounds = [];
     play.rounds.forEach((r) => {
