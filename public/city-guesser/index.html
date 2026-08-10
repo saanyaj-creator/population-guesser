@@ -63,6 +63,7 @@
     max-width: 70vw;
   }
   #prompt .sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  #prompt .sub #onlineTimer { color: var(--accent); font-weight: 700; }
 
   .player-switch {
     position: absolute;
@@ -177,7 +178,7 @@
     padding: 10px 20px;
   }
 
-  .mode-toggle { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; }
+  .mode-toggle { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; flex-wrap: wrap; }
   .mode-btn {
     background: #1e293b;
     border: 1px solid #334155;
@@ -188,7 +189,13 @@
     font-weight: 600;
     font-size: 14px;
   }
-  .mode-btn.active { background: var(--accent); color: #06202f; border-color: var(--accent); }
+  .mode-btn.active {
+    background: var(--accent);
+    color: #06202f;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
+    font-weight: 800;
+  }
 
   #nameInputs { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; flex-wrap: wrap; }
   #nameInputs input {
@@ -228,6 +235,18 @@
 
   .end-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
 
+  .room-code {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    margin: 6px 0 18px;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+  }
+  .status-note { color: var(--muted); font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .status-note.error-text { color: var(--danger); }
+  #onlinePanel #nameInputs { margin-bottom: 14px; }
+
   .leaflet-popup-content-wrapper { background: #1e293b; color: var(--text); }
   .leaflet-popup-tip { background: #1e293b; }
 </style>
@@ -262,6 +281,7 @@
   <h2 id="resultCity"></h2>
   <div class="distance" id="resultDistance"></div>
   <div class="points" id="resultPoints"></div>
+  <div class="winner-note" id="autoAdvanceNote" style="display:none;">Next round starts automatically…</div>
   <button id="nextBtn">Next City →</button>
 </div>
 
@@ -274,6 +294,7 @@
 
   // ---------------------------------------------------------------------
   // City data: [name, country, lat, lng]
+  // Keep in sync with netlify/functions/city-room.js's CITIES table.
   // ---------------------------------------------------------------------
   const CITIES = [
     ['Paris', 'France', 48.8566, 2.3522],
@@ -330,9 +351,16 @@
   const EARTH_RADIUS_KM = 6371;
   const PLAYER_COLORS = { p1: '#ef4444', p2: '#3b82f6' };
   const ACTUAL_COLOR = '#22c55e';
-  const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}';
-  const TILE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: US National Park Service';
+  const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}';
+  const TILE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: USGS, Esri, TANA, DeLorme, and NPS';
+  const TILE_MAX_ZOOM = 13;
+  // Transparent overlay of country borders + place labels — off by default
+  // (Hard mode) so the base map stays unlabeled, but shown at reveal after
+  // every guess, and shown throughout in Easy mode.
+  const BORDER_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
   const STORAGE_KEY = 'cityGuesserHistory_v1';
+  const FN_ROOM = '/.netlify/functions/city-room';
+  const FN_LEADERBOARD = '/.netlify/functions/city-leaderboard';
 
   // ---------------------------------------------------------------------
   // Geo math
@@ -374,30 +402,54 @@
   const actualIcon = makeDotIcon(ACTUAL_COLOR);
 
   // ---------------------------------------------------------------------
-  // History / leaderboard persistence (localStorage — this is a
-  // standalone file the user opens directly in their own browser, not a
-  // hosted app, so this is where "save data" lives).
+  // History / leaderboard persistence.
+  //
+  // Primary source of truth is the global, cross-device leaderboard served
+  // by netlify/functions/city-leaderboard.js. If that's unreachable — most
+  // notably when this exact file is opened directly from disk rather than
+  // served by Netlify — everything falls back to localStorage so the game
+  // still works fully offline, just scoped to this browser.
   // ---------------------------------------------------------------------
-  function loadHistory() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    } catch (e) {
-      return [];
-    }
+  function loadHistoryLocal() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (e) { return []; }
   }
-  function saveHistory(arr) {
+  function saveHistoryLocal(arr) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable */ }
   }
-  function recordPlay(play) {
-    const h = loadHistory();
+  function recordPlayLocal(play) {
+    const h = loadHistoryLocal();
     h.push(play);
-    saveHistory(h);
+    saveHistoryLocal(h);
   }
-  function collectScorePool() {
+  async function fetchLeaderboardEntries(limit) {
+    try {
+      const res = await fetch(`${FN_LEADERBOARD}?limit=${limit || 100}`);
+      if (!res.ok) throw new Error('bad status');
+      const data = await res.json();
+      return Array.isArray(data.plays) ? data.plays : [];
+    } catch (e) {
+      return loadHistoryLocal();
+    }
+  }
+  async function postPlay(play) {
+    try {
+      const res = await fetch(FN_LEADERBOARD, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ play }),
+      });
+      if (!res.ok) throw new Error('bad status');
+      return true;
+    } catch (e) {
+      recordPlayLocal(play);
+      return false;
+    }
+  }
+  function scorePoolFrom(entries) {
     const pool = [];
-    loadHistory().forEach((p) => {
+    entries.forEach((p) => {
       if (typeof p.totals.p1 === 'number') pool.push(p.totals.p1);
-      if (p.mode === '2p' && typeof p.totals.p2 === 'number') pool.push(p.totals.p2);
+      if (p.mode !== '1p' && typeof p.totals.p2 === 'number') pool.push(p.totals.p2);
     });
     return pool;
   }
@@ -414,12 +466,28 @@
   const map = L.map('map', {
     worldCopyJump: true,
     minZoom: 2,
-    maxZoom: 8,
+    maxZoom: TILE_MAX_ZOOM,
   }).setView([20, 0], 2);
 
   // Physical basemap only: terrain, elevation, rivers, coastlines.
-  // No city labels, place names, or political borders.
-  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 8 }).addTo(map);
+  // No city labels, place names, or political borders by default.
+  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM }).addTo(map);
+
+  // Borders/labels overlay — added or removed on top of the base layer
+  // depending on difficulty and game phase (see showBorders/hideBorders).
+  let borderLayer = null;
+  let bordersShown = false;
+  function showBorders() {
+    if (bordersShown) return;
+    if (!borderLayer) borderLayer = L.tileLayer(BORDER_TILE_URL, { maxZoom: TILE_MAX_ZOOM, opacity: 0.85 });
+    borderLayer.addTo(map);
+    bordersShown = true;
+  }
+  function hideBorders() {
+    if (!bordersShown) return;
+    if (borderLayer) map.removeLayer(borderLayer);
+    bordersShown = false;
+  }
 
   // ---------------------------------------------------------------------
   // DOM references
@@ -433,6 +501,7 @@
   const resultCity = document.getElementById('resultCity');
   const resultDistance = document.getElementById('resultDistance');
   const resultPoints = document.getElementById('resultPoints');
+  const autoAdvanceNote = document.getElementById('autoAdvanceNote');
   const nextBtn = document.getElementById('nextBtn');
   const overlay = document.getElementById('overlay');
   const playerSwitchEl = document.getElementById('playerSwitch');
@@ -440,7 +509,8 @@
   // ---------------------------------------------------------------------
   // Game state
   // ---------------------------------------------------------------------
-  let mode = '1p'; // '1p' | '2p'
+  let mode = '1p'; // '1p' | '2p' | '2p-online'
+  let difficulty = 'hard'; // 'easy' (borders shown while guessing) | 'hard' (borders only at reveal)
   let playerNames = { p1: 'Player 1', p2: 'Player 2' };
   let sequence = [];
   let roundIndex = 0;
@@ -454,49 +524,130 @@
   let awaitingGuess = true;
   let reviewMapInstance = null;
 
+  // Online-mode-only state
+  let onlineTab = 'create'; // 'create' | 'join'
+  let prefillRoomCode = '';
+  let onlineRoomId = null;
+  let onlinePlayerId = null;
+  let onlinePollTimer = null;
+  let onlineRenderKey = null;
+  let onlineAnswered = false;
+  let onlineGuessLatLng = null;
+  let onlineRoundResults = [];
+
   function activePids() { return mode === '2p' ? ['p1', 'p2'] : ['p1']; }
   function currentCity() { return sequence[roundIndex]; }
 
   // ---------------------------------------------------------------------
   // Setup screen
   // ---------------------------------------------------------------------
-  function historySummaryHTML() {
-    const h = loadHistory();
-    if (h.length === 0) return '<p class="history-teaser">No games played yet on this device — this will be your first!</p>';
-    const best = Math.max(...h.map((p) => (p.mode === '2p' ? Math.max(p.totals.p1, p.totals.p2) : p.totals.p1)));
-    return `<p class="history-teaser">You've played ${h.length} game${h.length === 1 ? '' : 's'} on this device. Best score: ${best.toLocaleString()}.</p>`;
+  async function refreshHistoryTeaser() {
+    const el = document.getElementById('historyTeaser');
+    if (!el) return;
+    const entries = await fetchLeaderboardEntries(500);
+    const stillThere = document.getElementById('historyTeaser');
+    if (!stillThere) return; // screen moved on while this was in flight
+    if (entries.length === 0) {
+      stillThere.textContent = 'No games played yet — this will be the first!';
+      return;
+    }
+    const best = Math.max(...entries.map((p) => (p.mode !== '1p' ? Math.max(p.totals.p1, p.totals.p2 ?? 0) : p.totals.p1)));
+    stillThere.textContent = `${entries.length} game${entries.length === 1 ? '' : 's'} played so far. Best score: ${best.toLocaleString()}.`;
   }
 
   function renderSetupScreen() {
-    overlay.innerHTML = `
-      <div class="overlay-inner">
-        <h1>City <span>Guesser</span></h1>
-        <p>You'll be given the name of a city. Click on the map to drop your pin as close as you can to it. Score up to 5,000 points per round based on how close your guess is. 5 rounds per game.</p>
-        <div class="mode-toggle">
-          <button class="mode-btn ${mode === '1p' ? 'active' : ''}" data-mode="1p">1 Player</button>
-          <button class="mode-btn ${mode === '2p' ? 'active' : ''}" data-mode="2p">2 Players</button>
-        </div>
+    stopOnlinePolling();
+    onlineRoomId = null;
+    onlinePlayerId = null;
+    onlineRenderKey = null;
+    onlineRoundResults = [];
+    onlineAnswered = false;
+
+    const modeButtons = `
+      <div class="mode-toggle">
+        <button class="mode-btn ${mode === '1p' ? 'active' : ''}" data-mode="1p">${mode === '1p' ? '✓ ' : ''}1 Player</button>
+        <button class="mode-btn ${mode === '2p' ? 'active' : ''}" data-mode="2p">${mode === '2p' ? '✓ ' : ''}2 Players (same screen)</button>
+        <button class="mode-btn ${mode === '2p-online' ? 'active' : ''}" data-mode="2p-online">${mode === '2p-online' ? '✓ ' : ''}2 Players (online)</button>
+      </div>
+      <div class="mode-toggle">
+        <button class="mode-btn ${difficulty === 'easy' ? 'active' : ''}" data-difficulty="easy">${difficulty === 'easy' ? '✓ ' : ''}Easy (borders shown)</button>
+        <button class="mode-btn ${difficulty === 'hard' ? 'active' : ''}" data-difficulty="hard">${difficulty === 'hard' ? '✓ ' : ''}Hard (no borders)</button>
+      </div>`;
+
+    let bodyHTML;
+    if (mode === '2p-online') {
+      bodyHTML = `
+        <div id="onlinePanel">
+          <div class="mode-toggle">
+            <button class="mode-btn ${onlineTab === 'create' ? 'active' : ''}" data-onlinetab="create" type="button">${onlineTab === 'create' ? '✓ ' : ''}Create Game</button>
+            <button class="mode-btn ${onlineTab === 'join' ? 'active' : ''}" data-onlinetab="join" type="button">${onlineTab === 'join' ? '✓ ' : ''}Join Game</button>
+          </div>
+          ${onlineTab === 'create' ? `
+            <div id="nameInputs">
+              <input id="onlineNameInput" placeholder="Your name" value="${playerNames.p1}" maxlength="20" />
+            </div>
+            <button id="onlineActionBtn" type="button">Create Game</button>
+          ` : `
+            <div id="nameInputs">
+              <input id="onlineNameInput" placeholder="Your name" value="${playerNames.p2}" maxlength="20" />
+              <input id="onlineCodeInput" placeholder="Room code" value="${prefillRoomCode}" maxlength="6" style="text-transform:uppercase" />
+            </div>
+            <button id="onlineActionBtn" type="button">Join Game</button>
+          `}
+          <p class="status-note" id="onlineError"></p>
+        </div>`;
+    } else {
+      bodyHTML = `
         <div id="nameInputs" style="${mode === '2p' ? '' : 'display:none'}">
           <input id="p1Name" placeholder="Player 1 name" value="${playerNames.p1}" maxlength="20" />
           <input id="p2Name" placeholder="Player 2 name" value="${playerNames.p2}" maxlength="20" />
         </div>
-        <button id="startBtn">Start Game</button>
-        ${historySummaryHTML()}
+        <button id="startBtn">Start Game</button>`;
+    }
+
+    overlay.innerHTML = `
+      <div class="overlay-inner">
+        <h1>City <span>Guesser</span></h1>
+        <p>You'll be given the name of a city. Click on the map to drop your pin as close as you can to it. Score up to 5,000 points per round based on how close your guess is. 5 rounds per game.</p>
+        ${modeButtons}
+        ${bodyHTML}
+        <p class="history-teaser" id="historyTeaser">Checking game history…</p>
       </div>
     `;
     overlay.classList.remove('hidden');
 
-    overlay.querySelectorAll('.mode-btn').forEach((btn) => {
+    overlay.querySelectorAll('[data-mode]').forEach((btn) => {
       btn.addEventListener('click', () => {
         captureNameInputs();
         mode = btn.dataset.mode;
         renderSetupScreen();
       });
     });
-    document.getElementById('startBtn').addEventListener('click', () => {
-      captureNameInputs();
-      startGame();
+    overlay.querySelectorAll('[data-difficulty]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        captureNameInputs();
+        difficulty = btn.dataset.difficulty;
+        renderSetupScreen();
+      });
     });
+
+    if (mode === '2p-online') {
+      overlay.querySelectorAll('[data-onlinetab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          captureNameInputs();
+          onlineTab = btn.dataset.onlinetab;
+          renderSetupScreen();
+        });
+      });
+      document.getElementById('onlineActionBtn').addEventListener('click', handleOnlineAction);
+    } else {
+      document.getElementById('startBtn').addEventListener('click', () => {
+        captureNameInputs();
+        startGame();
+      });
+    }
+
+    refreshHistoryTeaser();
   }
 
   function captureNameInputs() {
@@ -504,10 +655,15 @@
     const p2Input = document.getElementById('p2Name');
     if (p1Input && p1Input.value.trim()) playerNames.p1 = p1Input.value.trim();
     if (p2Input && p2Input.value.trim()) playerNames.p2 = p2Input.value.trim();
+    const onlineNameInput = document.getElementById('onlineNameInput');
+    if (onlineNameInput && onlineNameInput.value.trim()) {
+      if (onlineTab === 'create') playerNames.p1 = onlineNameInput.value.trim();
+      else playerNames.p2 = onlineNameInput.value.trim();
+    }
   }
 
   // ---------------------------------------------------------------------
-  // Game flow
+  // Local game flow (1 player, or 2 players sharing this screen)
   // ---------------------------------------------------------------------
   function startGame() {
     sequence = shuffle(CITIES).slice(0, ROUNDS);
@@ -524,6 +680,7 @@
     guesses = { p1: null, p2: null };
     clearMarkers();
     map.setView([20, 0], 2);
+    if (difficulty === 'easy') showBorders(); else hideBorders();
 
     const [name, country] = currentCity();
     promptCityEl.textContent = `Find: ${name}, ${country}`;
@@ -532,6 +689,8 @@
       : 'Click anywhere on the map to drop your pin';
     roundValueEl.textContent = `${roundIndex + 1} / ${ROUNDS}`;
     resultPanel.classList.remove('show');
+    autoAdvanceNote.style.display = 'none';
+    nextBtn.style.display = '';
 
     updateHud();
     renderPlayerSwitch();
@@ -548,7 +707,7 @@
   }
 
   function updateHud() {
-    if (mode === '2p') {
+    if (mode === '2p' || mode === '2p-online') {
       scoreValueEl.innerHTML = `<span class="p1">${playerNames.p1}: ${totals.p1.toLocaleString()}</span><br><span class="p2">${playerNames.p2}: ${totals.p2.toLocaleString()}</span>`;
     } else {
       scoreValueEl.textContent = totals.p1.toLocaleString();
@@ -589,6 +748,18 @@
   }
 
   map.on('click', (e) => {
+    if (mode === '2p-online') {
+      if (!onlineRoomId || onlineAnswered) return;
+      onlineGuessLatLng = e.latlng;
+      if (guessMarkers[onlinePlayerId]) {
+        guessMarkers[onlinePlayerId].setLatLng(e.latlng);
+      } else {
+        guessMarkers[onlinePlayerId] = L.marker(e.latlng, { icon: makeDotIcon(PLAYER_COLORS[onlinePlayerId]) }).addTo(map);
+      }
+      guessBtn.disabled = false;
+      guessBtn.textContent = 'Submit Guess';
+      return;
+    }
     if (!awaitingGuess) return;
     const pid = mode === '2p' ? activePlayer : 'p1';
     guesses[pid] = e.latlng;
@@ -602,7 +773,9 @@
   });
 
   guessBtn.addEventListener('click', () => {
-    if (guessBtn.disabled || !awaitingGuess) return;
+    if (guessBtn.disabled) return;
+    if (mode === '2p-online') { submitOnlineGuess(); return; }
+    if (!awaitingGuess) return;
     submitGuess();
   });
 
@@ -631,6 +804,7 @@
     actualMarker = L.marker([lat, lng], { icon: actualIcon }).addTo(map);
     gameRounds.push(roundEntry);
     map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
+    showBorders(); // always reveal borders once the answer is shown, regardless of difficulty
 
     renderResultPanel(roundEntry);
     updateHud();
@@ -638,6 +812,8 @@
   }
 
   function renderResultPanel(roundEntry) {
+    autoAdvanceNote.style.display = 'none';
+    nextBtn.style.display = '';
     resultCity.textContent = `${roundEntry.name}, ${roundEntry.country}`;
     if (mode === '1p') {
       const g = roundEntry.guesses.p1;
@@ -653,6 +829,7 @@
   }
 
   nextBtn.addEventListener('click', () => {
+    if (mode === '2p-online') return; // online rounds auto-advance server-side
     roundIndex += 1;
     if (roundIndex >= ROUNDS) {
       finishGame();
@@ -662,7 +839,8 @@
   });
 
   // ---------------------------------------------------------------------
-  // End of game: record history, show summary + review map + leaderboard
+  // End of local game: record to the (global, with local fallback)
+  // leaderboard, show summary + review map + leaderboard + percentile
   // ---------------------------------------------------------------------
   function buildPlayRecord() {
     let winner = null;
@@ -682,54 +860,58 @@
     };
   }
 
-  function finishGame() {
+  async function finishGame() {
     resultPanel.classList.remove('show');
-    const poolBefore = collectScorePool();
     const play = buildPlayRecord();
-    recordPlay(play);
-    renderEndScreen(play, poolBefore);
+    const priorEntries = await fetchLeaderboardEntries(500); // snapshot BEFORE this game is added
+    const poolBefore = scorePoolFrom(priorEntries);
+    const posted = await postPlay(play);
+    const recentEntries = posted ? priorEntries.concat([play]) : loadHistoryLocal();
+    renderEndScreen(play, poolBefore, recentEntries.slice(-8).reverse());
   }
 
   function percentileLine(label, score, pool) {
     const pct = getPercentile(score, pool);
-    if (pct === null) return `${label ? label + ': ' : ''}first game recorded on this device.`;
+    if (pct === null) return `${label ? label + ': ' : ''}first game recorded.`;
     return `${label ? label + ': ' : ''}better than <strong>${pct}%</strong> of ${pool.length} previous game${pool.length === 1 ? '' : 's'}.`;
   }
 
-  function renderEndScreen(play, poolBefore) {
-    const headerHTML = mode === '2p'
-      ? `<h1>Game <span>Over</span></h1><p class="winner-line">${play.winner === 'tie' ? 'Tie game!' : `${playerNames[play.winner]} wins!`}</p>`
+  function renderEndScreen(play, poolBefore, recentPlays, isCurrentFn) {
+    const twoPlayer = play.mode !== '1p';
+    const isCurrent = isCurrentFn || ((p) => p.id === play.id);
+
+    const headerHTML = twoPlayer
+      ? `<h1>Game <span>Over</span></h1><p class="winner-line">${play.winner === 'tie' ? 'Tie game!' : `${play.players.find((p) => p.id === play.winner).name} wins!`}</p>`
       : `<h1>Game <span>Over</span></h1>`;
 
-    const scoresHTML = mode === '2p'
+    const scoresHTML = twoPlayer
       ? `<div class="score-summary">
-           <div><span class="dot" style="background:${PLAYER_COLORS.p1}"></span>${playerNames.p1}: <strong>${play.totals.p1.toLocaleString()}</strong></div>
-           <div><span class="dot" style="background:${PLAYER_COLORS.p2}"></span>${playerNames.p2}: <strong>${play.totals.p2.toLocaleString()}</strong></div>
+           <div><span class="dot" style="background:${PLAYER_COLORS.p1}"></span>${play.players[0].name}: <strong>${play.totals.p1.toLocaleString()}</strong></div>
+           <div><span class="dot" style="background:${PLAYER_COLORS.p2}"></span>${play.players[1].name}: <strong>${play.totals.p2.toLocaleString()}</strong></div>
          </div>`
       : `<div class="score-summary"><div><strong style="font-size:26px;color:var(--accent-2)">${play.totals.p1.toLocaleString()}</strong> / ${(MAX_POINTS * ROUNDS).toLocaleString()}</div></div>`;
 
-    const percentileHTML = mode === '2p'
-      ? `<p class="percentile">${percentileLine(playerNames.p1, play.totals.p1, poolBefore)}<br>${percentileLine(playerNames.p2, play.totals.p2, poolBefore)}</p>`
+    const percentileHTML = twoPlayer
+      ? `<p class="percentile">${percentileLine(play.players[0].name, play.totals.p1, poolBefore)}<br>${percentileLine(play.players[1].name, play.totals.p2, poolBefore)}</p>`
       : `<p class="percentile">${percentileLine('', play.totals.p1, poolBefore)}</p>`;
 
-    const roundTableHeader = mode === '1p'
+    const roundTableHeader = !twoPlayer
       ? `<tr><th>#</th><th>City</th><th>Distance</th><th>Points</th></tr>`
-      : `<tr><th>#</th><th>City</th><th>${playerNames.p1}</th><th>${playerNames.p2}</th></tr>`;
+      : `<tr><th>#</th><th>City</th><th>${play.players[0].name}</th><th>${play.players[1].name}</th></tr>`;
     const roundRows = play.rounds.map((r, i) => {
-      if (mode === '1p') {
+      if (!twoPlayer) {
         return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${r.guesses.p1.distanceKm.toFixed(1)} km</td><td>${r.guesses.p1.points.toLocaleString()}</td></tr>`;
       }
       return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${r.guesses.p1.distanceKm.toFixed(1)} km / ${r.guesses.p1.points.toLocaleString()}</td><td>${r.guesses.p2.distanceKm.toFixed(1)} km / ${r.guesses.p2.points.toLocaleString()}</td></tr>`;
     }).join('');
 
-    const history = loadHistory();
-    const recentPlays = history.slice(-8).reverse();
     const leaderboardRows = recentPlays.map((p) => {
       const date = new Date(p.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      const scoreText = p.mode === '2p'
-        ? `<span style="color:${PLAYER_COLORS.p1}">${p.players[0].name} ${p.totals.p1.toLocaleString()}</span> vs <span style="color:${PLAYER_COLORS.p2}">${p.players[1].name} ${p.totals.p2.toLocaleString()}</span>`
+      const modeLabel = p.mode === '1p' ? '1P' : p.mode === '2p-online' ? '2P online' : '2P';
+      const scoreText = p.mode !== '1p'
+        ? `<span style="color:${PLAYER_COLORS.p1}">${p.players[0].name} ${p.totals.p1.toLocaleString()}</span> vs <span style="color:${PLAYER_COLORS.p2}">${p.players[1] ? p.players[1].name : '?'} ${(p.totals.p2 ?? 0).toLocaleString()}</span>`
         : `${p.totals.p1.toLocaleString()}`;
-      return `<tr class="${p.id === play.id ? 'current-play' : ''}"><td>${date}</td><td>${p.mode === '2p' ? '2P' : '1P'}</td><td>${scoreText}</td></tr>`;
+      return `<tr class="${isCurrent(p) ? 'current-play' : ''}"><td>${date}</td><td>${modeLabel}</td><td>${scoreText}</td></tr>`;
     }).join('');
 
     overlay.innerHTML = `
@@ -743,14 +925,14 @@
           <thead>${roundTableHeader}</thead>
           <tbody>${roundRows}</tbody>
         </table>
-        <div class="section-title">Leaderboard — recent plays on this device</div>
+        <div class="section-title">Leaderboard — recent plays across all devices</div>
         <table class="summary-table">
           <thead><tr><th>Date</th><th>Mode</th><th>Score</th></tr></thead>
           <tbody>${leaderboardRows}</tbody>
         </table>
         <div class="end-actions">
           <button id="startBtn">Play Again</button>
-          <button id="clearHistoryBtn" class="ghost-btn">Clear History</button>
+          <button id="clearHistoryBtn" class="ghost-btn">Clear local backup</button>
         </div>
       </div>
     `;
@@ -760,7 +942,7 @@
 
     document.getElementById('startBtn').addEventListener('click', renderSetupScreen);
     document.getElementById('clearHistoryBtn').addEventListener('click', () => {
-      if (confirm('Clear all saved game history from this browser? This cannot be undone.')) {
+      if (confirm("This clears the offline copy of your history stored in this browser (used only as a fallback when the shared leaderboard can't be reached). It won't affect the shared leaderboard other devices see. Continue?")) {
         localStorage.removeItem(STORAGE_KEY);
         renderSetupScreen();
       }
@@ -773,9 +955,10 @@
       zoomControl: false,
       attributionControl: false,
       minZoom: 1,
-      maxZoom: 8,
+      maxZoom: TILE_MAX_ZOOM,
     }).setView([20, 0], 1);
-    L.tileLayer(TILE_URL, { maxZoom: 8 }).addTo(reviewMapInstance);
+    L.tileLayer(TILE_URL, { maxZoom: TILE_MAX_ZOOM }).addTo(reviewMapInstance);
+    L.tileLayer(BORDER_TILE_URL, { maxZoom: TILE_MAX_ZOOM, opacity: 0.85 }).addTo(reviewMapInstance);
 
     const bounds = [];
     play.rounds.forEach((r) => {
@@ -784,6 +967,7 @@
       bounds.push([r.lat, r.lng]);
       Object.keys(r.guesses).forEach((pid) => {
         const g = r.guesses[pid];
+        if (g.lat == null || g.lng == null) return;
         const player = play.players.find((p) => p.id === pid);
         L.circleMarker([g.lat, g.lng], {
           radius: 6, color: PLAYER_COLORS[pid], fillColor: PLAYER_COLORS[pid], fillOpacity: 0.9, weight: 2,
@@ -793,6 +977,251 @@
       });
     });
     if (bounds.length) reviewMapInstance.fitBounds(L.latLngBounds(bounds), { padding: [24, 24] });
+  }
+
+  // ---------------------------------------------------------------------
+  // Online 2-player mode (cross-device) — talks to
+  // netlify/functions/city-room.js, which owns city selection, timing,
+  // and scoring so neither client has to trust the other.
+  // ---------------------------------------------------------------------
+  async function handleOnlineAction() {
+    const errorEl = document.getElementById('onlineError');
+    errorEl.className = 'status-note';
+    errorEl.textContent = '';
+    const nameInput = document.getElementById('onlineNameInput');
+    const name = (nameInput.value || '').trim() || (onlineTab === 'create' ? 'Player 1' : 'Player 2');
+    const btn = document.getElementById('onlineActionBtn');
+    btn.disabled = true;
+    btn.textContent = onlineTab === 'create' ? 'Creating…' : 'Joining…';
+
+    try {
+      if (onlineTab === 'create') {
+        playerNames.p1 = name;
+        const res = await fetch(FN_ROOM, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create', name }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not create a game.');
+        onlineRoomId = data.roomId;
+        onlinePlayerId = data.playerId;
+        renderOnlineWaitingScreen();
+        startOnlinePolling();
+      } else {
+        const codeInput = document.getElementById('onlineCodeInput');
+        const code = (codeInput.value || '').trim().toUpperCase();
+        if (!code) throw new Error('Enter the room code your friend shared.');
+        playerNames.p2 = name;
+        const res = await fetch(FN_ROOM, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'join', roomId: code, name }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not join that game.');
+        onlineRoomId = data.roomId;
+        onlinePlayerId = data.playerId;
+        onlineRoundResults = [];
+        onlineRenderKey = null;
+        overlay.classList.add('hidden');
+        startOnlinePolling();
+      }
+    } catch (e) {
+      errorEl.className = 'status-note error-text';
+      errorEl.textContent = e.message || "Online mode needs this to be the Netlify-hosted copy of the game, not a local file.";
+      btn.disabled = false;
+      btn.textContent = onlineTab === 'create' ? 'Create Game' : 'Join Game';
+    }
+  }
+
+  function renderOnlineWaitingScreen() {
+    const shareUrl = `${location.origin}${location.pathname}?room=${onlineRoomId}`;
+    overlay.innerHTML = `
+      <div class="overlay-inner">
+        <h1>Waiting for <span>Player 2</span></h1>
+        <div class="room-code">${onlineRoomId}</div>
+        <p>Share this code, or send the link, with whoever you're playing — they can be on any device, anywhere.</p>
+        <button id="copyLinkBtn" class="ghost-btn" type="button">Copy invite link</button>
+        <p class="status-note">Waiting for them to join…</p>
+        <div class="end-actions"><button id="cancelOnlineBtn" class="ghost-btn" type="button">Cancel</button></div>
+      </div>
+    `;
+    overlay.classList.remove('hidden');
+    document.getElementById('copyLinkBtn').addEventListener('click', async () => {
+      const copyBtn = document.getElementById('copyLinkBtn');
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        copyBtn.textContent = 'Copied!';
+      } catch (e) {
+        window.prompt('Copy this link:', shareUrl);
+      }
+    });
+    document.getElementById('cancelOnlineBtn').addEventListener('click', renderSetupScreen);
+  }
+
+  function startOnlinePolling() {
+    stopOnlinePolling();
+    onlinePollTimer = setInterval(pollOnlineState, 1600);
+    pollOnlineState();
+  }
+  function stopOnlinePolling() {
+    if (onlinePollTimer) { clearInterval(onlinePollTimer); onlinePollTimer = null; }
+  }
+
+  async function pollOnlineState() {
+    if (!onlineRoomId) return;
+    try {
+      const res = await fetch(`${FN_ROOM}?action=state&roomId=${onlineRoomId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        stopOnlinePolling();
+        const errorEl = document.getElementById('onlineError');
+        if (errorEl) { errorEl.className = 'status-note error-text'; errorEl.textContent = data.error || 'This game is no longer available.'; }
+        else { renderSetupScreen(); }
+        return;
+      }
+      handleOnlineState(data.state);
+    } catch (e) {
+      // transient network hiccup — try again on the next tick
+    }
+  }
+
+  function handleOnlineState(state) {
+    if (state.players.p1) playerNames.p1 = state.players.p1.name;
+    if (state.players.p2) playerNames.p2 = state.players.p2.name;
+    totals.p1 = state.players.p1 ? state.players.p1.totalScore : 0;
+    totals.p2 = state.players.p2 ? state.players.p2.totalScore : 0;
+
+    if (state.status === 'waiting') return; // still on the "waiting for opponent" screen
+
+    if (state.status === 'ended') {
+      stopOnlinePolling();
+      finishOnlineGame(state);
+      return;
+    }
+
+    const key = `${state.round}:${state.status}`;
+    if (state.status === 'in_progress') {
+      if (key !== onlineRenderKey) { onlineRenderKey = key; startOnlineRoundUI(state); }
+      updateOnlineTimer(state.roundDeadline);
+      updateHud();
+    } else if (state.status === 'revealing') {
+      if (key !== onlineRenderKey) {
+        onlineRenderKey = key;
+        onlineRoundResults.push(state.lastRoundResult);
+        revealOnlineRound(state);
+      }
+      updateHud();
+    }
+  }
+
+  function startOnlineRoundUI(state) {
+    overlay.classList.add('hidden');
+    clearMarkers();
+    map.setView([20, 0], 2);
+    if (difficulty === 'easy') showBorders(); else hideBorders();
+    onlineAnswered = false;
+    onlineGuessLatLng = null;
+    resultPanel.classList.remove('show');
+    playerSwitchEl.style.display = 'none';
+    playerSwitchEl.innerHTML = '';
+
+    promptCityEl.textContent = `Find: ${state.current.name}, ${state.current.country}`;
+    promptSubEl.innerHTML = `Click the map to place your pin — <span id="onlineTimer"></span>`;
+    roundValueEl.textContent = `${state.round} / ${state.maxRounds}`;
+    guessBtn.disabled = true;
+    guessBtn.textContent = 'Place a pin to guess';
+    updateOnlineTimer(state.roundDeadline);
+  }
+
+  function updateOnlineTimer(deadline) {
+    const el = document.getElementById('onlineTimer');
+    if (!el) return;
+    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    el.textContent = `${remaining}s left`;
+  }
+
+  async function submitOnlineGuess() {
+    if (!onlineGuessLatLng || onlineAnswered) return;
+    onlineAnswered = true;
+    guessBtn.disabled = true;
+    guessBtn.textContent = 'Waiting for opponent…';
+    try {
+      const res = await fetch(FN_ROOM, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'guess', roomId: onlineRoomId, playerId: onlinePlayerId, lat: onlineGuessLatLng.lat, lng: onlineGuessLatLng.lng }),
+      });
+      const data = await res.json();
+      if (res.ok) handleOnlineState(data.state);
+    } catch (e) {
+      // the next poll tick will reconcile state regardless
+    }
+  }
+
+  function revealOnlineRound(state) {
+    showBorders(); // always reveal borders once the answer is shown, regardless of difficulty
+    const r = state.lastRoundResult;
+    actualMarker = L.marker([r.lat, r.lng], { icon: actualIcon }).addTo(map);
+    const boundsPoints = [[r.lat, r.lng]];
+
+    Object.keys(r.guesses).forEach((pid) => {
+      const g = r.guesses[pid];
+      if (g.lat == null || g.lng == null) return; // timed out, no pin to show
+      if (pid !== onlinePlayerId) {
+        const marker = L.marker([g.lat, g.lng], { icon: makeDotIcon(PLAYER_COLORS[pid]) }).addTo(map);
+        roundLines.push(marker);
+      }
+      const line = L.polyline([[g.lat, g.lng], [r.lat, r.lng]], { color: PLAYER_COLORS[pid], weight: 2, dashArray: '6,6' }).addTo(map);
+      roundLines.push(line);
+      boundsPoints.push([g.lat, g.lng]);
+    });
+    map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
+
+    resultCity.textContent = `${r.name}, ${r.country}`;
+    const g1 = r.guesses.p1, g2 = r.guesses.p2;
+    const distText = (g) => (g.lat == null ? 'no guess' : `${g.distanceKm.toFixed(1)} km`);
+    resultDistance.innerHTML = `<span style="color:${PLAYER_COLORS.p1}">${playerNames.p1}</span>: ${distText(g1)} &nbsp;·&nbsp; <span style="color:${PLAYER_COLORS.p2}">${playerNames.p2}</span>: ${distText(g2)}`;
+    const winner = g1.points === g2.points ? 'Tie this round' : `${g1.points > g2.points ? playerNames.p1 : playerNames.p2} wins this round`;
+    resultPoints.innerHTML = `<span style="color:${PLAYER_COLORS.p1}">+${g1.points.toLocaleString()}</span> &nbsp;·&nbsp; <span style="color:${PLAYER_COLORS.p2}">+${g2.points.toLocaleString()}</span><br><span class="winner-note">${winner}</span>`;
+    autoAdvanceNote.style.display = 'block';
+    nextBtn.style.display = 'none';
+    resultPanel.classList.add('show');
+    updateHud();
+  }
+
+  async function finishOnlineGame(state) {
+    resultPanel.classList.remove('show');
+    const p1 = state.players.p1, p2 = state.players.p2;
+    const winner = p1.totalScore > p2.totalScore ? 'p1' : p2.totalScore > p1.totalScore ? 'p2' : 'tie';
+    const roomIdForMatch = onlineRoomId;
+    const play = {
+      id: `${roomIdForMatch}-local`,
+      timestamp: new Date().toISOString(),
+      mode: '2p-online',
+      players: [{ id: 'p1', name: p1.name }, { id: 'p2', name: p2.name }],
+      rounds: onlineRoundResults.map((r) => ({ name: r.name, country: r.country, lat: r.lat, lng: r.lng, guesses: r.guesses })),
+      totals: { p1: p1.totalScore, p2: p2.totalScore },
+      winner,
+    };
+    playerNames.p1 = p1.name;
+    playerNames.p2 = p2.name;
+
+    const allEntries = await fetchLeaderboardEntries(500);
+    const isThisGame = (p) => typeof p.id === 'string' && p.id.startsWith(`${roomIdForMatch}-`);
+    const poolBefore = scorePoolFrom(allEntries.filter((p) => !isThisGame(p)));
+    const recentPlays = allEntries.slice(-8).reverse();
+
+    renderEndScreen(play, poolBefore, recentPlays, isThisGame);
+  }
+
+  // ---------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------
+  const initialParams = new URLSearchParams(location.search);
+  const roomParam = (initialParams.get('room') || '').toUpperCase().trim();
+  if (roomParam) {
+    mode = '2p-online';
+    onlineTab = 'join';
+    prefillRoomCode = roomParam;
   }
 
   renderSetupScreen();
