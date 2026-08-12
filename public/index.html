@@ -470,10 +470,31 @@ function stopPolling() {
 function tickTimer() {
   if (!lastState || lastState.status !== 'in_progress') return;
   const el = document.querySelector('.timer-display');
-  if (!el) return;
-  const secsLeft = Math.max(0, Math.ceil((lastState.roundDeadline - Date.now()) / 1000));
-  el.textContent = 'Time left: 0:' + (secsLeft < 10 ? '0' + secsLeft : secsLeft);
-  el.classList.toggle('low', secsLeft <= 10);
+  if (el) {
+    const secsLeft = Math.max(0, Math.ceil((lastState.roundDeadline - Date.now()) / 1000));
+    el.textContent = 'Time left: 0:' + (secsLeft < 10 ? '0' + secsLeft : secsLeft);
+    el.classList.toggle('low', secsLeft <= 10);
+  }
+  maybeAutoSubmit();
+}
+
+// If the clock runs out before someone hits "Guess", submit whatever
+// they've already typed rather than letting the round end with a 0 for
+// having "no answer" — a half-typed guess is still better information than
+// nothing. If the box is empty, there's nothing to auto-submit, so it falls
+// through to the server's existing timeout handling (recorded as timed out).
+function maybeAutoSubmit() {
+  if (submittingGuess) return;
+  if (Date.now() < lastState.roundDeadline) return;
+  const input = document.getElementById('guessInput');
+  if (!input) return;
+  const pid = localMode
+    ? (!lastState.answeredFlags.p1 ? 'p1' : (!lastState.answeredFlags.p2 ? 'p2' : null))
+    : myPlayerId;
+  if (!pid || lastState.answeredFlags[pid]) return;
+  const guess = parseGuess(input.value);
+  if (guess === null) return;
+  if (localMode) submitLocalGuess(); else submitOnlineGuess();
 }
 
 // A signature of only the fields that should trigger a full re-render.
