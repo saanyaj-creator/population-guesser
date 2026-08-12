@@ -82,16 +82,18 @@ function resolveRoundIfNeeded(state) {
   });
 
   state.status = 'revealing';
+  // No longer auto-advances after a fixed delay — players now move on by
+  // explicitly hitting "Next Round" (the 'next' action below). revealUntil
+  // is kept around only in case older clients still read it for display.
   state.revealUntil = Date.now() + REVEAL_MS;
 }
 
-function advanceIfRevealDone(state) {
-  if (state.status === 'revealing' && Date.now() >= state.revealUntil) {
-    if (state.round >= MAX_ROUNDS) {
-      state.status = 'ended';
-    } else {
-      startRound(state);
-    }
+function advanceToNext(state) {
+  if (state.status !== 'revealing') return;
+  if (state.round >= MAX_ROUNDS) {
+    state.status = 'ended';
+  } else {
+    startRound(state);
   }
 }
 
@@ -209,7 +211,6 @@ export default async (req, context) => {
       if (!state) return json({ error: 'Room not found.' }, 404);
       if (Date.now() - state.createdAt > ROOM_TTL_MS) return json({ error: 'This room has expired. Start a new game.' }, 410);
       resolveRoundIfNeeded(state);
-      advanceIfRevealDone(state);
       await store.setJSON(roomId, state);
       return json({ state: publicState(state) });
     }
@@ -227,7 +228,17 @@ export default async (req, context) => {
         state.roundAnswers[playerId] = { guess: guess, pct: pct, score: scoreFor(pct), timedOut: false };
       }
       resolveRoundIfNeeded(state);
-      advanceIfRevealDone(state);
+      await store.setJSON(roomId, state);
+      return json({ state: publicState(state) });
+    }
+
+    // Rounds no longer advance on a timer — the player(s) explicitly click
+    // "Next Round" once they're done looking at the reveal, which calls this.
+    if (action === 'next') {
+      const roomId = String(body.roomId || '').toUpperCase().trim();
+      const state = await store.get(roomId, { type: 'json' });
+      if (!state) return json({ error: 'Room not found.' }, 404);
+      advanceToNext(state);
       await store.setJSON(roomId, state);
       return json({ state: publicState(state) });
     }

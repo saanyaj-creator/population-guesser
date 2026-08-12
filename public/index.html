@@ -526,7 +526,6 @@ function renderGame(state) {
     }
   } else if (state.status === 'revealing') {
     const roundEntries = state.history.filter(h => h.round === state.round);
-    const secsLeft = Math.max(0, Math.ceil((state.revealUntil - Date.now()) / 1000));
     body += '<div class="result show">' + roundEntries.map(h => {
       const scoreColor = h.score >= 80 ? 'var(--good)' : (h.score >= 40 ? 'var(--accent)' : 'var(--bad)');
       const winner = roundEntries.length === 2 && roundEntries[0].score !== roundEntries[1].score && h.score === Math.max(roundEntries[0].score, roundEntries[1].score) ? '<span class="winner-tag">Round winner</span>' : '';
@@ -536,7 +535,7 @@ function renderGame(state) {
         '<div class="result-score" style="color:' + scoreColor + ';">' + h.score + ' points</div>' +
         '<div class="result-detail">' + detail + '</div></div>';
     }).join('') + '</div>';
-    body += '<p class="note">Next round in ' + secsLeft + 's…</p>';
+    body += '<div class="actions" style="margin-top:14px;"><button class="btn" id="nextRoundBtn" type="button">' + (state.round >= state.maxRounds ? 'See Final Results' : 'Next Round') + '</button></div>';
   }
 
   body += '<div class="stats-row">' +
@@ -573,9 +572,24 @@ function renderGame(state) {
     });
   }
 
+  const nextBtn = document.getElementById('nextRoundBtn');
+  if (nextBtn) nextBtn.addEventListener('click', nextRound);
+
   document.getElementById('endGameBtn').addEventListener('click', endGame);
 
   updateHistoryUI(state, myId);
+}
+
+async function nextRound() {
+  const btn = document.getElementById('nextRoundBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const data = await api('next', { roomId: myRoomId });
+    lastState = data.state;
+    renderGame(lastState);
+  } catch (e) {
+    showError(e.message);
+  }
 }
 
 function guessBoxHtml(playerName) {
@@ -631,7 +645,6 @@ function renderGameLocal(state, preservedGuess) {
     }
   } else if (state.status === 'revealing') {
     const roundEntries = state.history.filter(h => h.round === state.round);
-    const secsLeft = Math.max(0, Math.ceil((state.revealUntil - Date.now()) / 1000));
     body += '<div class="result show">' + roundEntries.map(h => {
       const scoreColor = h.score >= 80 ? 'var(--good)' : (h.score >= 40 ? 'var(--accent)' : 'var(--bad)');
       const winner = roundEntries.length === 2 && roundEntries[0].score !== roundEntries[1].score && h.score === Math.max(roundEntries[0].score, roundEntries[1].score) ? '<span class="winner-tag">Round winner</span>' : '';
@@ -641,7 +654,7 @@ function renderGameLocal(state, preservedGuess) {
         '<div class="result-score" style="color:' + scoreColor + ';">' + h.score + ' points</div>' +
         '<div class="result-detail">' + detail + '</div></div>';
     }).join('') + '</div>';
-    body += '<p class="note">Next round in ' + secsLeft + 's…</p>';
+    body += '<div class="actions" style="margin-top:14px;"><button class="btn" id="nextRoundBtn" type="button">' + (state.round >= state.maxRounds ? 'See Final Results' : 'Next Round') + '</button></div>';
   }
 
   body += '<div class="stats-row">' + statGroup(p1.name, p1, state.round) + statGroup(p2.name, p2, state.round) + '</div>';
@@ -680,6 +693,9 @@ function renderGameLocal(state, preservedGuess) {
       renderGame(lastState);
     });
   }
+
+  const nextBtn = document.getElementById('nextRoundBtn');
+  if (nextBtn) nextBtn.addEventListener('click', nextRound);
 
   document.getElementById('endGameBtn').addEventListener('click', endGame);
 
