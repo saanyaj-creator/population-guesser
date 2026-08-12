@@ -9,6 +9,7 @@ const COUNTRIES = [{"name":"Abkhazia","pop":245424},{"name":"Afghanistan","pop":
 const MAX_ROUNDS = 10;
 const ROUND_MS = 30000;
 const REVEAL_MS = 15000;
+const MAX_PLAYERS_BY_MODE = { solo: 1, duo: 2, trio: 3 };
 const ROOM_TTL_MS = 1000 * 60 * 60 * 6; // rooms older than 6h are treated as gone
 
 function scoreFor(pctOff) {
@@ -146,7 +147,7 @@ export default async (req, context) => {
   try {
     if (action === 'create') {
       const name = String(body.name || 'Player 1').slice(0, 24) || 'Player 1';
-      const mode = body.mode === 'solo' ? 'solo' : 'duo';
+      const mode = MAX_PLAYERS_BY_MODE[body.mode] ? body.mode : 'duo';
       let roomId;
       // avoid (very unlikely) collisions
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -180,20 +181,52 @@ export default async (req, context) => {
       const roomId = String(body.roomId || '').toUpperCase().trim();
       const state = await store.get(roomId, { type: 'json' });
       if (!state) return json({ error: 'Room not found. Double-check the link or code.' }, 404);
-      if (state.players.p2) {
+      const maxPlayers = MAX_PLAYERS_BY_MODE[state.mode] || 2;
+      const existingSlots = Object.keys(state.players);
+      // Next open seat, e.g. p2 then p3 for a trio room.
+      const nextSlot = 'p' + (existingSlots.length + 1);
+      if (existingSlots.length >= maxPlayers) {
         if (String(body.rejoin) === 'true') {
-          return json({ roomId: roomId, playerId: 'p2', state: publicState(state) });
+          // Rejoining player doesn't know their own slot from this request
+          // alone; the client only calls rejoin with a playerId it already
+          // has, so just confirm the room state back to them.
+          return json({ roomId: roomId, playerId: body.playerId || existingSlots[existingSlots.length - 1], state: publicState(state) });
         }
-        return json({ error: 'This room already has two players.' }, 400);
+        return json({ error: 'This room is already full.' }, 400);
       }
-      const name = String(body.name || 'Player 2').slice(0, 24) || 'Player 2';
-      state.players.p2 = { name: name, totalScore: 0 };
-      // Wait for an explicit "Start Game" click rather than starting the
-      // instant player 2 joins, so both players get a moment to see they're
-      // both in before the clock starts on round 1.
-      state.status = 'ready';
+      const name = String(body.name || ('Player ' + (existingSlots.length + 1))).slice(0, 24) || ('Player ' + (existingSlots.length + 1));
+      state.players[nextSlot] = { name: name, totalScore: 0 };
+      // Wait for an explicit "Start Game" click once the room is full,
+      // rather than starting the instant the last seat fills, so everyone
+      // gets a moment to see they're all in before the clock starts.
+      if (Object.keys(state.players).length >= maxPlayers) {
+        state.status = 'ready';
+      }
       await store.setJSON(roomId, state);
-      return json({ roomId: roomId, playerId: 'p2', state: publicState(state) });
+      return json({ roomId: roomId, playerId: nextSlot, state: publicState(state) });
+    }
+
+    if (action === 'rematch') {
+      const roomId = String(body.roomId || '').toUpperCase().trim();
+      const state = await store.get(roomId, { type: 'json' });
+      if (!state) return json({ error: 'Room not found.' }, 404);
+      // Same room, same players, same link — just reset the game itself.
+      state.round = 0;
+      state.current = null;
+      state.roundAnswers = {};
+      state.history = [];
+      state.order = shuffle(COUNTRIES.map((_, i) => i));
+      state.orderIdx = 0;
+      state.roundDeadline = null;
+      state.revealUntil = null;
+      Object.keys(state.players).forEach(pid => { state.players[pid].totalScore = 0; });
+      if (state.mode === 'solo') {
+        startRound(state);
+      } else {
+        state.status = 'ready';
+      }
+      await store.setJSON(roomId, state);
+      return json({ state: publicState(state) });
     }
 
     if (action === 'start') {

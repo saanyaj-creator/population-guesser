@@ -171,17 +171,15 @@ function loadHistory() {
   try { return JSON.parse(localStorage.getItem(LB_KEY) || '[]'); } catch (e) { return []; }
 }
 
-function saveGameRecord(state, isSolo, myId, oppId) {
-  const players = [];
-  const me = state.players[myId];
-  const meRounds = state.history.filter(h => h.playerId === myId).length;
-  players.push({ name: me.name, totalScore: me.totalScore, avg: meRounds ? Math.round(me.totalScore / meRounds) : 0 });
-  if (!isSolo) {
-    const opp = state.players[oppId];
-    const oppRounds = state.history.filter(h => h.playerId === oppId).length;
-    players.push({ name: opp.name, totalScore: opp.totalScore, avg: oppRounds ? Math.round(opp.totalScore / oppRounds) : 0 });
-  }
-  const record = { date: new Date().toISOString(), mode: isSolo ? 'solo' : 'duo', rounds: state.round, players: players };
+function saveGameRecord(state) {
+  // Records every player in the room (2 for duo, 3 for trio, 1 for solo),
+  // not just "me" — so a trio game's full roster shows up on the leaderboard.
+  const players = Object.keys(state.players).map(pid => {
+    const p = state.players[pid];
+    const rounds = state.history.filter(h => h.playerId === pid).length;
+    return { name: p.name, totalScore: p.totalScore, avg: rounds ? Math.round(p.totalScore / rounds) : 0 };
+  });
+  const record = { date: new Date().toISOString(), mode: state.mode || 'duo', rounds: state.round, players: players };
   let history = loadHistory();
   history.push(record);
   if (history.length > 200) history = history.slice(-200);
@@ -272,6 +270,7 @@ function renderLanding() {
   let html = '<div class="mode-select">' +
       '<button class="mode-btn' + (landingMode === 'solo' ? ' active' : '') + '" id="btnModeSolo">1 Player</button>' +
       '<button class="mode-btn' + (landingMode === 'duo' ? ' active' : '') + '" id="btnModeDuo">2 Players (Online)</button>' +
+      '<button class="mode-btn' + (landingMode === 'trio' ? ' active' : '') + '" id="btnModeTrio">3 Players (Online)</button>' +
       '<button class="mode-btn' + (landingMode === 'local' ? ' active' : '') + '" id="btnModeLocal">2 Players (Same Screen)</button>' +
     '</div>';
 
@@ -279,8 +278,9 @@ function renderLanding() {
     html += '<p class="note">Play on your own — guess the population of each country, no one else needed.</p>' +
       '<div class="name-row"><input type="text" id="createNameInput" placeholder="Your name" maxlength="24"></div>' +
       '<button class="btn" id="btnDoCreate">Start Game</button>';
-  } else if (landingMode === 'duo') {
-    html += '<p class="note">You\'ll get a link to send to a friend on any device. You both guess the same country each round, with a 30-second timer.</p>' +
+  } else if (landingMode === 'duo' || landingMode === 'trio') {
+    const otherCount = landingMode === 'trio' ? 'two friends' : 'a friend';
+    html += '<p class="note">You\'ll get a link to send to ' + otherCount + ' on any device. Everyone guesses the same country each round, with a 30-second timer.</p>' +
       '<div class="name-row"><input type="text" id="createNameInput" placeholder="Your name" maxlength="24"></div>' +
       '<button class="btn" id="btnDoCreate">Create Game &amp; Get Link</button>';
   } else if (landingMode === 'local') {
@@ -293,8 +293,9 @@ function renderLanding() {
   app.innerHTML = html;
   document.getElementById('btnModeSolo').addEventListener('click', () => { landingMode = 'solo'; render(); });
   document.getElementById('btnModeDuo').addEventListener('click', () => { landingMode = 'duo'; render(); });
+  document.getElementById('btnModeTrio').addEventListener('click', () => { landingMode = 'trio'; render(); });
   document.getElementById('btnModeLocal').addEventListener('click', () => { landingMode = 'local'; render(); });
-  if (landingMode === 'solo' || landingMode === 'duo') {
+  if (landingMode === 'solo' || landingMode === 'duo' || landingMode === 'trio') {
     document.getElementById('btnDoCreate').addEventListener('click', () => doCreate(landingMode));
   } else if (landingMode === 'local') {
     document.getElementById('btnDoCreateLocal').addEventListener('click', doCreateLocal);
@@ -312,13 +313,21 @@ function renderJoin() {
   document.getElementById('btnDoJoin').addEventListener('click', doJoin);
 }
 
+const MAX_PLAYERS_BY_MODE = { solo: 1, duo: 2, trio: 3 };
+
 function renderCreateWait() {
   historyCard.style.display = 'none';
   const link = location.origin + location.pathname + '?room=' + myRoomId;
+  const maxPlayers = MAX_PLAYERS_BY_MODE[(lastState && lastState.mode) || 'duo'] || 2;
+  const joined = lastState ? Object.keys(lastState.players).length : 1;
+  const remaining = maxPlayers - joined;
+  const waitNote = remaining > 0
+    ? (joined + ' of ' + maxPlayers + ' players in — waiting for ' + remaining + ' more…')
+    : 'Everyone\'s in!';
   app.innerHTML = (
     '<p class="note">Send this link to whoever you\'re playing with:</p>' +
     '<div class="link-box"><input type="text" id="shareLink" readonly value="' + link + '"><button class="btn btn-secondary" id="copyLinkBtn">Copy</button></div>' +
-    '<p class="spinner-note">Waiting for your friend to join…</p>' +
+    '<p class="spinner-note">' + waitNote + '</p>' +
     '<p class="back-link" id="cancelWait">Cancel and start over</p>'
   );
   document.getElementById('copyLinkBtn').addEventListener('click', () => {
@@ -378,6 +387,7 @@ async function doCreate(mode) {
     const data = await api('create', { name: name, mode: mode });
     myPlayerId = data.playerId;
     myRoomId = data.roomId;
+    lastState = data.state;
     if (mode === 'solo') {
       // No one else to wait for — the server already started round 1.
       view = 'playing';
@@ -421,7 +431,16 @@ async function doJoin() {
     const data = await api('join', { roomId: roomFromUrl, name: name });
     myPlayerId = data.playerId;
     myRoomId = data.roomId;
-    view = 'playing';
+    lastState = data.state;
+    if (data.state.status === 'waiting') {
+      // Trio rooms need a third player — show the same waiting screen the
+      // creator sees (it already has the shareable link/room code) instead
+      // of dropping straight into a game view with nothing to render.
+      view = 'create-wait';
+      render();
+    } else {
+      view = 'playing';
+    }
     startPolling();
   } catch (e) {
     document.getElementById('joinError').innerHTML = '<div class="error-box">' + e.message + '</div>';
@@ -465,7 +484,7 @@ function tickTimer() {
 // swallow the click.
 function stateSignature(s) {
   if (!s) return '';
-  return [s.status, s.round, JSON.stringify(s.answeredFlags), s.history.length].join('|');
+  return [s.status, s.round, JSON.stringify(s.answeredFlags), s.history.length, Object.keys(s.players).length].join('|');
 }
 
 let lastState = null;
@@ -475,17 +494,25 @@ async function poll() {
     const data = await api('state', { roomId: myRoomId });
     lastState = data.state;
     if (lastState.status === 'waiting') {
-      // still waiting for player 2; stay on create-wait screen
+      // Still waiting for more players — re-render the waiting screen only
+      // when the join count actually changed, so it stays in place for the
+      // person to read rather than flickering every 1.2s.
+      const waitSig = stateSignature(lastState);
+      if (waitSig !== lastRenderedSignature) {
+        lastRenderedSignature = waitSig;
+        if (view === 'create-wait') render();
+      }
       return;
     }
     if (view !== 'playing') {
       view = 'playing';
     }
     const sig = stateSignature(lastState);
-    if (sig === lastRenderedSignature && lastState.status === 'in_progress') {
-      // Nothing meaningful changed (still the same round, same answers in) —
-      // skip the rebuild so an in-progress click/tap isn't interrupted.
-      // tickTimer() keeps the visible countdown moving in the meantime.
+    if (sig === lastRenderedSignature && (lastState.status === 'in_progress' || lastState.status === 'ended')) {
+      // Nothing meaningful changed. For 'in_progress' this avoids yanking
+      // the guess button out from under a click; for 'ended' it stops the
+      // end screen (and its leaderboard save) from re-rendering every poll
+      // while everyone's just looking at the results.
       return;
     }
     lastRenderedSignature = sig;
@@ -516,18 +543,20 @@ function renderGame(state) {
 
   historyCard.style.display = 'block';
   const myId = myPlayerId;
-  const isSolo = !state.players.p2;
-  const oppId = isSolo ? null : (myId === 'p1' ? 'p2' : 'p1');
+  const allIds = Object.keys(state.players);
+  const isSolo = allIds.length === 1;
+  const otherIds = allIds.filter(pid => pid !== myId);
   const me = state.players[myId];
-  const opp = isSolo ? null : state.players[oppId];
 
   if (state.status === 'ended') {
-    stopPolling();
+    // Deliberately keep polling here (rather than stopping it) — if another
+    // player clicks "Play Again", the room resets under everyone via the
+    // same room state, and this client needs to still be polling to notice.
     return renderEnded(state);
   }
 
   if (state.status === 'ready') {
-    return renderReady(state, myId, isSolo, oppId, me, opp);
+    return renderReady(state, myId, isSolo, otherIds, me);
   }
 
   if (localMode) {
@@ -535,7 +564,6 @@ function renderGame(state) {
   }
 
   const iAnswered = !!state.answeredFlags[myId];
-  const oppAnswered = isSolo ? false : !!state.answeredFlags[oppId];
 
   let body = '';
   body += '<div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>';
@@ -548,7 +576,8 @@ function renderGame(state) {
     body += '<div class="player-box' + (iAnswered ? ' answered' : '') + '">';
     body += '<div class="player-box-name"><span>' + me.name + (isSolo ? '' : ' (you)') + '</span><span>' + me.totalScore + ' pts</span></div>';
     if (iAnswered) {
-      body += '<div class="waiting-note">' + (isSolo ? 'Moving to the next round…' : ('Answer submitted — waiting for ' + opp.name + '…')) + '</div>';
+      const waitingNames = otherIds.filter(pid => !state.answeredFlags[pid]).map(pid => state.players[pid].name);
+      body += '<div class="waiting-note">' + (isSolo ? 'Moving to the next round…' : (waitingNames.length ? ('Answer submitted — waiting for ' + waitingNames.join(', ') + '…') : 'Answer submitted — resolving round…')) + '</div>';
     } else {
       body += '<div class="guess-row"><input type="text" id="guessInput" placeholder="Type your guess, e.g. 5" inputmode="numeric" autocomplete="off"><button class="btn" id="submitGuessBtn">Guess</button></div>';
       body += '<div class="quick-multiply">' +
@@ -561,17 +590,21 @@ function renderGame(state) {
     }
     body += '</div>';
 
-    if (!isSolo) {
-      body += '<div class="player-box' + (oppAnswered ? ' answered' : '') + '">';
-      body += '<div class="player-box-name"><span>' + opp.name + '</span><span>' + opp.totalScore + ' pts</span></div>';
-      body += '<div class="waiting-note">' + (oppAnswered ? 'Has answered this round.' : 'Still guessing…') + '</div>';
+    otherIds.forEach(pid => {
+      const p = state.players[pid];
+      const answered = !!state.answeredFlags[pid];
+      body += '<div class="player-box' + (answered ? ' answered' : '') + '">';
+      body += '<div class="player-box-name"><span>' + p.name + '</span><span>' + p.totalScore + ' pts</span></div>';
+      body += '<div class="waiting-note">' + (answered ? 'Has answered this round.' : 'Still guessing…') + '</div>';
       body += '</div>';
-    }
+    });
   } else if (state.status === 'revealing') {
     const roundEntries = state.history.filter(h => h.round === state.round);
+    const maxScore = Math.max.apply(null, roundEntries.map(h => h.score));
+    const maxScoreCount = roundEntries.filter(h => h.score === maxScore).length;
     body += '<div class="result show">' + roundEntries.map(h => {
       const scoreColor = h.score >= 80 ? 'var(--good)' : (h.score >= 40 ? 'var(--accent)' : 'var(--bad)');
-      const winner = roundEntries.length === 2 && roundEntries[0].score !== roundEntries[1].score && h.score === Math.max(roundEntries[0].score, roundEntries[1].score) ? '<span class="winner-tag">Round winner</span>' : '';
+      const winner = roundEntries.length > 1 && maxScoreCount === 1 && h.score === maxScore ? '<span class="winner-tag">Round winner</span>' : '';
       const detail = h.timedOut ? 'Ran out of time — no answer submitted.' :
         ('Actual population: <b>' + fmt(h.actual) + '</b><br>Guess: <b>' + fmt(h.guess) + '</b><br>Off by <b>' + h.pct.toFixed(1) + '%</b>');
       return '<div class="result-player"><div class="result-player-name">' + h.playerName + (h.playerId === myId ? ' (you)' : '') + winner + '</div>' +
@@ -583,7 +616,7 @@ function renderGame(state) {
 
   body += '<div class="stats-row">' +
     statGroup(me.name + (isSolo ? '' : ' (you)'), me, state.round) +
-    (isSolo ? '' : statGroup(opp.name, opp, state.round)) +
+    otherIds.map(pid => statGroup(state.players[pid].name, state.players[pid], state.round)).join('') +
     '</div>';
 
   body += '<div class="actions"><button class="btn btn-secondary" id="endGameBtn">End Game</button></div>';
@@ -781,11 +814,12 @@ function setGuessButtonBusy(busy) {
   btn.textContent = busy ? 'Submitting…' : 'Guess';
 }
 
-function renderReady(state, myId, isSolo, oppId, me, opp) {
+function renderReady(state, myId, isSolo, otherIds, me) {
   historyCard.style.display = 'none';
-  let html = '<div class="round-label">Both players are in</div>' +
+  const otherNames = otherIds.map(pid => state.players[pid].name);
+  let html = '<div class="round-label">Everyone\'s in</div>' +
     '<div class="country-name" style="font-size:1.6rem;">Ready to play?</div>' +
-    '<p class="note">' + me.name + ' (you) and ' + opp.name + ' have both joined. Either of you can start round 1 — 10 countries, 30 seconds each.</p>' +
+    '<p class="note">' + me.name + ' (you) and ' + otherNames.join(', ') + ' have all joined. Anyone can start round 1 — 10 countries, 30 seconds each.</p>' +
     '<button class="btn" id="startGameBtn">Start Game</button>';
   app.innerHTML = html;
   document.getElementById('startGameBtn').addEventListener('click', async () => {
@@ -843,10 +877,12 @@ async function submitOnlineGuess() {
   }
 }
 
+const PLAYER_COLORS = { p1: '#5eead4', p2: '#f472b6', p3: '#facc15' };
+
 function updateHistoryUI(state, myId) {
   const listEl = document.getElementById('historyList');
   const entries = state.history.slice().reverse();
-  const colorFor = pid => pid === 'p1' ? '#5eead4' : '#f472b6';
+  const colorFor = pid => PLAYER_COLORS[pid] || '#5eead4';
   if (entries.length === 0) {
     listEl.innerHTML = '<div class="empty-note">Guesses will show up here as you play.</div>';
   } else {
@@ -918,47 +954,57 @@ function updateChart(state, myId, colorFor) {
 // ---------------- End screen ----------------
 function renderEnded(state) {
   const myId = myPlayerId;
-  const isSolo = !state.players.p2;
-  const oppId = isSolo ? null : (myId === 'p1' ? 'p2' : 'p1');
+  const allIds = Object.keys(state.players);
+  const isSolo = allIds.length === 1;
+  const otherIds = allIds.filter(pid => pid !== myId);
   const me = state.players[myId];
-  const opp = isSolo ? null : state.players[oppId];
 
   const youSuffix = (isSolo || localMode) ? '' : ' (you)';
 
   let banner = '';
   if (isSolo) {
     banner = '<div class="winner-banner">Nice work — game complete!</div>';
-  } else if (me.totalScore === opp.totalScore) {
-    banner = '<div class="winner-banner">It\'s a tie!</div>';
   } else {
-    banner = '<div class="winner-banner">' + (me.totalScore > opp.totalScore ? me.name + youSuffix : opp.name) + ' wins!</div>';
+    const maxScore = Math.max.apply(null, allIds.map(pid => state.players[pid].totalScore));
+    const winners = allIds.filter(pid => state.players[pid].totalScore === maxScore);
+    if (winners.length > 1) {
+      banner = '<div class="winner-banner">It\'s a tie between ' + winners.map(pid => state.players[pid].name + (!localMode && pid === myId ? youSuffix : '')).join(' and ') + '!</div>';
+    } else {
+      const winnerId = winners[0];
+      banner = '<div class="winner-banner">' + state.players[winnerId].name + (!localMode && winnerId === myId ? youSuffix : '') + ' wins!</div>';
+    }
   }
 
   let html = '<div class="round-label">Game Over</div><div class="country-name" style="font-size:1.6rem;">Here\'s how it went</div>';
   html += banner;
   html += '<div class="end-stats">' +
     endCard(me.name + youSuffix, me, state.round) +
-    (isSolo ? '' : endCard(opp.name, opp, state.round)) +
+    otherIds.map(pid => endCard(state.players[pid].name, state.players[pid], state.round)).join('') +
     '</div>';
   html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
     '<p class="note" id="mapInfo">Click a dot to see the country and its actual population.</p>' +
     '<p class="map-note">Dots are placed by each country\'s approximate center. Map outline: <a href="https://github.com/flekschas/simple-world-map" target="_blank" rel="noopener" style="color:var(--accent);">Simple World Map</a> (CC BY-SA 3.0).</p></div>';
 
-  const saved = saveGameRecord(state, isSolo, myId, oppId);
+  const saved = saveGameRecord(state);
   html += '<div class="leaderboard-section">' +
     '<h3>How this game compares</h3>' +
     renderPercentileHtml(me.name, me.totalScore, saved.history) +
     renderLeaderboardHtml(saved.history) +
     '<div class="actions" style="margin-top:14px;"><button class="btn btn-secondary" id="exportHistoryBtn" type="button">Export Game History</button></div>' +
-    '<p class="map-note">Your game history is saved in this browser only — it won\'t follow you to another device.</p>' +
+    '<p class="map-note">Your game history is saved in this browser only — it won\'t follow you to another device. Ask us about a shared/cloud leaderboard if you\'d like scores visible across devices.</p>' +
     '</div>';
 
-  html += '<div class="actions" style="margin-top:24px;"><button class="btn" id="playAgainBtn">Play Again</button></div>';
+  html += '<div class="actions" style="margin-top:24px;">' +
+    '<button class="btn" id="playAgainBtn">Play Again (Same Players)</button>' +
+    '<button class="btn btn-secondary" id="newGameBtn">New Game</button>' +
+    '</div>';
 
   app.innerHTML = html;
   renderMap(state, localMode ? null : myId);
   document.getElementById('exportHistoryBtn').addEventListener('click', exportHistory);
-  document.getElementById('playAgainBtn').addEventListener('click', () => {
+  document.getElementById('playAgainBtn').addEventListener('click', playAgain);
+  document.getElementById('newGameBtn').addEventListener('click', () => {
+    stopPolling();
     history.replaceState(null, '', location.pathname);
     myPlayerId = null;
     myRoomId = null;
@@ -967,10 +1013,37 @@ function renderEnded(state) {
     localMode = false;
     localPassGate = false;
     localLastRound = null;
+    lastRenderedSignature = null;
     view = 'landing';
     render();
   });
   updateHistoryUI(state, localMode ? null : myId);
+}
+
+// Resets the same room (same players, same link) back to round 1 instead of
+// sending everyone back to the landing page to set up a brand new game.
+// Works for online duo/trio too: whichever player clicks it calls 'rematch',
+// and the others' existing polling picks up the reset automatically.
+async function playAgain() {
+  const btn = document.getElementById('playAgainBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting rematch…'; }
+  try {
+    const data = await api('rematch', { roomId: myRoomId });
+    lastState = data.state;
+    if (localMode) {
+      localPassGate = false;
+      localLastRound = null;
+      if (lastState.status === 'ready') {
+        const started = await api('start', { roomId: myRoomId });
+        lastState = started.state;
+      }
+    }
+    view = 'playing';
+    renderGame(lastState);
+    startPolling();
+  } catch (e) {
+    showError(e.message);
+  }
 }
 
 function endCard(name, player, rounds) {
@@ -988,10 +1061,10 @@ function projectLonLat(lon, lat) {
 
 function renderMap(state, myId) {
   const dots = [];
-  // Two players can guess the same country in the same round, which would
-  // land their dots exactly on top of each other — nudge each player's dot
-  // a fixed, small distance apart so both stay visible and clickable.
-  const jitter = { p1: -2.2, p2: 2.2 };
+  // Players can guess the same country in the same round, which would land
+  // their dots exactly on top of each other — nudge each player's dot a
+  // fixed, small distance apart so all of them stay visible and clickable.
+  const jitter = { p1: -3, p2: 0, p3: 3 };
   state.history.forEach((h, i) => {
     const coords = CENTROIDS[h.name];
     if (!coords) return;
