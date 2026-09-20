@@ -531,11 +531,14 @@ async function poll() {
       view = 'playing';
     }
     const sig = stateSignature(lastState);
-    if (sig === lastRenderedSignature && (lastState.status === 'in_progress' || lastState.status === 'ended')) {
-      // Nothing meaningful changed. For 'in_progress' this avoids yanking
-      // the guess button out from under a click; for 'ended' it stops the
-      // end screen (and its leaderboard save) from re-rendering every poll
-      // while everyone's just looking at the results.
+    if (sig === lastRenderedSignature) {
+      // Nothing meaningful changed since the last real render, in any
+      // status — skip the rebuild. This is what stops polling from yanking
+      // a button out from under a click (Guess while in_progress, Next
+      // Round/Start Game while revealing/ready, re-saving the leaderboard
+      // record every 1.2s while ended, etc). The status is itself part of
+      // the signature, so the first poll after any real transition still
+      // renders immediately.
       return;
     }
     lastRenderedSignature = sig;
