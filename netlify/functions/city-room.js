@@ -204,13 +204,54 @@ const CITIES = [
     ['Port-au-Prince', 'Haiti', 18.5944, -72.3074],
     ['Nassau', 'Bahamas', 25.0343, -77.3963],
     ['Suva', 'Fiji', -18.1416, 178.4419],
+    ['Vatican City', 'Vatican City', 41.9029, 12.4534],
+    ['Georgetown', 'Guyana', 6.8013, -58.1551],
+    ['Paramaribo', 'Suriname', 5.8520, -55.2038],
+    ['Cotonou', 'Benin', 6.3703, 2.3912],
+    ['Gaborone', 'Botswana', -24.6282, 25.9231],
+    ['Ouagadougou', 'Burkina Faso', 12.3714, -1.5197],
+    ['Bujumbura', 'Burundi', -3.3822, 29.3644],
+    ['Praia', 'Cabo Verde', 14.9330, -23.5133],
+    ['Yaounde', 'Cameroon', 3.8480, 11.5021],
+    ['Bangui', 'Central African Republic', 4.3947, 18.5582],
+    ["N'Djamena", 'Chad', 12.1348, 15.0557],
+    ['Moroni', 'Comoros', -11.7042, 43.2402],
+    ['Brazzaville', 'Republic of the Congo', -4.2634, 15.2429],
+    ['Djibouti', 'Djibouti', 11.8251, 42.5903],
+    ['Malabo', 'Equatorial Guinea', 3.7523, 8.7742],
+    ['Asmara', 'Eritrea', 15.3229, 38.9251],
+    ['Mbabane', 'Eswatini', -26.3054, 31.1367],
+    ['Libreville', 'Gabon', 0.4162, 9.4673],
+    ['Banjul', 'Gambia', 13.4549, -16.5790],
+    ['Conakry', 'Guinea', 9.6412, -13.5784],
+    ['Bissau', 'Guinea-Bissau', 11.8636, -15.5977],
+    ['Maseru', 'Lesotho', -29.3151, 27.4869],
+    ['Monrovia', 'Liberia', 6.2907, -10.7605],
+    ['Lilongwe', 'Malawi', -13.9626, 33.7741],
+    ['Bamako', 'Mali', 12.6392, -8.0029],
+    ['Nouakchott', 'Mauritania', 18.0735, -15.9582],
+    ['Port Louis', 'Mauritius', -20.1609, 57.5012],
+    ['Niamey', 'Niger', 13.5127, 2.1128],
+    ['Abuja', 'Nigeria', 9.0765, 7.3986],
+    ['Sao Tome', 'Sao Tome and Principe', 0.3365, 6.7273],
+    ['Victoria', 'Seychelles', -4.6191, 55.4513],
+    ['Freetown', 'Sierra Leone', 8.4657, -13.2317],
+    ['Mogadishu', 'Somalia', 2.0469, 45.3182],
+    ['Juba', 'South Sudan', 4.8517, 31.5825],
+    ['Lome', 'Togo', 6.1725, 1.2314],
+    ['Rabat', 'Morocco', 34.0209, -6.8416],
+    ['Dodoma', 'Tanzania', -6.1630, 35.7516],
+    ['Pretoria', 'South Africa', -25.7479, 28.2293],
 ].map(([name, country, lat, lng]) => ({ name, country, lat, lng }));
 
 const MAX_ROUNDS = 5;
 const MAX_POINTS = 5000;
 const EARTH_RADIUS_KM = 6371;
 const ROUND_MS = 60000; // 60s to place a pin
-const REVEAL_MS = 8000; // 8s to look at the result before auto-advancing
+// Rounds now advance when both players click "Next Round" (the 'ready'
+// action below), not on a fixed timer. REVEAL_MAX_MS is only a safety net
+// so a room doesn't hang forever if one player closes the tab mid-reveal.
+const REVEAL_MAX_MS = 5 * 60 * 1000;
 const ROOM_TTL_MS = 1000 * 60 * 60 * 6; // rooms older than 6h are treated as gone
 
 function toRad(d) { return (d * Math.PI) / 180; }
@@ -327,17 +368,21 @@ function resolveRoundIfNeeded(state) {
 
   state.lastRoundResult = result;
   state.status = 'revealing';
-  state.revealUntil = Date.now() + REVEAL_MS;
+  state.revealUntil = Date.now() + REVEAL_MAX_MS;
+  state.readyFlags = {};
 }
 
 async function advanceIfRevealDone(store, state) {
-  if (state.status === 'revealing' && Date.now() >= state.revealUntil) {
-    if (state.round >= MAX_ROUNDS) {
-      state.status = 'ended';
-      await recordToLeaderboard(store, state);
-    } else {
-      startRound(state);
-    }
+  if (state.status !== 'revealing') return;
+  const activeIds = Object.keys(state.players);
+  const allReady = activeIds.length > 0 && activeIds.every((pid) => state.readyFlags && state.readyFlags[pid]);
+  const timedOut = Date.now() >= state.revealUntil;
+  if (!allReady && !timedOut) return;
+  if (state.round >= MAX_ROUNDS) {
+    state.status = 'ended';
+    await recordToLeaderboard(store, state);
+  } else {
+    startRound(state);
   }
 }
 
@@ -357,6 +402,7 @@ function publicState(state) {
     current: state.current ? { name: state.current.name, country: state.current.country, lat: inProgress ? null : state.current.lat, lng: inProgress ? null : state.current.lng } : null,
     lastRoundResult: state.lastRoundResult,
     answeredFlags: Object.fromEntries(Object.keys(state.players).map((pid) => [pid, pid in (state.roundAnswers || {})])),
+    readyFlags: state.readyFlags || {},
   };
 }
 
@@ -450,6 +496,25 @@ export default async (req, context) => {
         state.roundAnswers[playerId] = { lat: clampedLat, lng: normLng, distanceKm, points: scoreForDistance(distanceKm), timedOut: false };
       }
       resolveRoundIfNeeded(state);
+      await advanceIfRevealDone(store, state);
+      await store.setJSON(roomId, state);
+      return json({ state: publicState(state) });
+    }
+
+    if (action === 'ready') {
+      // A player clicked "Next Round" during the reveal, signalling they're
+      // done looking at the result. Once every active player has signalled,
+      // advanceIfRevealDone moves everyone to the next round immediately
+      // instead of waiting for the REVEAL_MAX_MS safety timeout.
+      const roomId = String(body.roomId || '').toUpperCase().trim();
+      const playerId = String(body.playerId || '');
+      const state = await store.get(roomId, { type: 'json' });
+      if (!state) return json({ error: 'Room not found.' }, 404);
+      if (!(playerId in state.players)) return json({ error: 'Unknown player.' }, 400);
+      if (state.status === 'revealing') {
+        state.readyFlags = state.readyFlags || {};
+        state.readyFlags[playerId] = true;
+      }
       await advanceIfRevealDone(store, state);
       await store.setJSON(roomId, state);
       return json({ state: publicState(state) });

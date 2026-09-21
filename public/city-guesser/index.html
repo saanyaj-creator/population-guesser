@@ -11,6 +11,7 @@
     --panel: #1e293b;
     --accent: #38bdf8;
     --accent-2: #22c55e;
+    --accent-3: #f59e0b;
     --danger: #ef4444;
     --text: #f1f5f9;
     --muted: #94a3b8;
@@ -153,9 +154,16 @@
     overflow-y: auto;
   }
   #overlay.hidden { display: none; }
-  .overlay-inner { width: min(640px, 92vw); }
+  .overlay-inner {
+    width: min(640px, 92vw);
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.65), rgba(30, 41, 59, 0.35));
+    border: 1px solid #334155;
+    border-radius: 22px;
+    padding: 38px 34px 30px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  }
   #overlay h1 { font-size: 42px; margin: 0 0 6px; letter-spacing: -0.02em; }
-  #overlay h1 span { color: var(--accent); }
+  #overlay h1 span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   #overlay p { color: var(--muted); max-width: 480px; margin: 0 auto 20px; line-height: 1.5; }
   #overlay button {
     background: var(--accent);
@@ -178,6 +186,15 @@
     padding: 10px 20px;
   }
 
+  .section-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    text-align: left;
+    margin: 0 0 8px 2px;
+  }
   .mode-toggle { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; flex-wrap: wrap; }
   .mode-btn {
     background: #1e293b;
@@ -188,13 +205,31 @@
     cursor: pointer;
     font-weight: 600;
     font-size: 14px;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
+  .mode-btn:hover { transform: translateY(-1px); }
   .mode-btn.active {
     background: var(--accent);
     color: #06202f;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
     font-weight: 800;
+  }
+  /* Mode row (1 Player / 2 Players local / 2 Players online) — always one
+     row, cyan theme. Difficulty row — its own row underneath, amber theme,
+     so the two groups read as visually distinct choices. */
+  .mode-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: center;
+    gap: 8px;
+  }
+  .mode-row .mode-btn { padding: 10px 16px; font-size: 13px; white-space: nowrap; }
+  .difficulty-row { margin-bottom: 26px; }
+  .diff-btn.active {
+    background: var(--accent-3);
+    border-color: var(--accent-3);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35);
   }
 
   #nameInputs { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; flex-wrap: wrap; }
@@ -249,6 +284,19 @@
 
   .leaflet-popup-content-wrapper { background: #1e293b; color: var(--text); }
   .leaflet-popup-tip { background: #1e293b; }
+
+  .country-label { pointer-events: none; }
+  .country-label span {
+    position: absolute;
+    left: 0; top: 0;
+    transform: translate(-50%, -50%);
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    text-shadow: -1px -1px 0 #0f172a, 1px -1px 0 #0f172a, -1px 1px 0 #0f172a, 1px 1px 0 #0f172a, 0 0 5px #0f172a;
+  }
 
 </style>
 </head>
@@ -493,6 +541,47 @@
     ['Port-au-Prince', 'Haiti', 18.5944, -72.3074],
     ['Nassau', 'Bahamas', 25.0343, -77.3963],
     ['Suva', 'Fiji', -18.1416, 178.4419],
+    ['Vatican City', 'Vatican City', 41.9029, 12.4534],
+    ['Georgetown', 'Guyana', 6.8013, -58.1551],
+    ['Paramaribo', 'Suriname', 5.8520, -55.2038],
+    // Remaining African capitals not already covered above (several
+    // countries' largest city — Lagos, Casablanca, Dar es Salaam — was
+    // already in the list but isn't that country's actual capital).
+    ['Cotonou', 'Benin', 6.3703, 2.3912],
+    ['Gaborone', 'Botswana', -24.6282, 25.9231],
+    ['Ouagadougou', 'Burkina Faso', 12.3714, -1.5197],
+    ['Bujumbura', 'Burundi', -3.3822, 29.3644],
+    ['Praia', 'Cabo Verde', 14.9330, -23.5133],
+    ['Yaounde', 'Cameroon', 3.8480, 11.5021],
+    ['Bangui', 'Central African Republic', 4.3947, 18.5582],
+    ["N'Djamena", 'Chad', 12.1348, 15.0557],
+    ['Moroni', 'Comoros', -11.7042, 43.2402],
+    ['Brazzaville', 'Republic of the Congo', -4.2634, 15.2429],
+    ['Djibouti', 'Djibouti', 11.8251, 42.5903],
+    ['Malabo', 'Equatorial Guinea', 3.7523, 8.7742],
+    ['Asmara', 'Eritrea', 15.3229, 38.9251],
+    ['Mbabane', 'Eswatini', -26.3054, 31.1367],
+    ['Libreville', 'Gabon', 0.4162, 9.4673],
+    ['Banjul', 'Gambia', 13.4549, -16.5790],
+    ['Conakry', 'Guinea', 9.6412, -13.5784],
+    ['Bissau', 'Guinea-Bissau', 11.8636, -15.5977],
+    ['Maseru', 'Lesotho', -29.3151, 27.4869],
+    ['Monrovia', 'Liberia', 6.2907, -10.7605],
+    ['Lilongwe', 'Malawi', -13.9626, 33.7741],
+    ['Bamako', 'Mali', 12.6392, -8.0029],
+    ['Nouakchott', 'Mauritania', 18.0735, -15.9582],
+    ['Port Louis', 'Mauritius', -20.1609, 57.5012],
+    ['Niamey', 'Niger', 13.5127, 2.1128],
+    ['Abuja', 'Nigeria', 9.0765, 7.3986],
+    ['Sao Tome', 'Sao Tome and Principe', 0.3365, 6.7273],
+    ['Victoria', 'Seychelles', -4.6191, 55.4513],
+    ['Freetown', 'Sierra Leone', 8.4657, -13.2317],
+    ['Mogadishu', 'Somalia', 2.0469, 45.3182],
+    ['Juba', 'South Sudan', 4.8517, 31.5825],
+    ['Lome', 'Togo', 6.1725, 1.2314],
+    ['Rabat', 'Morocco', 34.0209, -6.8416],
+    ['Dodoma', 'Tanzania', -6.1630, 35.7516],
+    ['Pretoria', 'South Africa', -25.7479, 28.2293],
   ];
 
   const ROUNDS = 5;
@@ -504,21 +593,40 @@
   // brown highlands, blue oceans) baked into the tiles themselves — a CSS
   // filter can't manufacture that on a paler source, it just blows out
   // highlights (tried World_Terrain_Base + saturate/contrast: land clipped
-  // to solid white, ocean went neon cyan). Its tradeoff is a lower native
-  // zoom (8): TILE_MAX_ZOOM lets the map UI zoom further than that, and
-  // TILE_NATIVE_MAX_ZOOM tells Leaflet to stop fetching new tiles at 8 and
-  // smoothly upscale instead — softer at extreme zoom, but not pixelated
-  // blocks, and the color stays correct throughout.
-  const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}';
+  // to solid white, ocean went neon cyan). But its native tiles stop at
+  // zoom 8, and just letting Leaflet upscale those tiles past that (the
+  // previous approach) is genuinely blurry/pixelated at high zoom — not a
+  // real fix. So: use World_Physical_Map for the vivid low/overview zooms
+  // (2-8), then switch to World_Terrain_Base — a real, higher-resolution
+  // Esri layer with native tiles up to zoom 13 — for zoom 9 and beyond, so
+  // "zoomed in" actually means real detail instead of a blown-up blur. The
+  // color is more muted at that point (terrain shading rather than the
+  // vivid physical palette), which is a fair tradeoff for genuine sharpness.
+  const TILE_LOW_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}';
+  const TILE_HIGH_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}';
   const TILE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: US National Park Service';
-  const TILE_NATIVE_MAX_ZOOM = 8;
-  const TILE_MAX_ZOOM = 12;
+  const TILE_LOW_MAX_NATIVE_ZOOM = 8;
+  const TILE_SWITCH_ZOOM = 9; // zoom level at which the high-res layer takes over
+  const TILE_HIGH_MAX_NATIVE_ZOOM = 13;
+  const TILE_MAX_ZOOM = 13;
   // Country borders as clean vector lines (no raster labels, no ugly
   // baked-in font) drawn on top of the base map — off by default (Hard
   // mode) so the base map stays unlabeled while guessing, shown at reveal
   // after every guess, and shown throughout in Easy mode. Natural Earth
   // 110m country outlines, ~250KB, fetched once and cached in memory.
   const BORDERS_GEOJSON_URL = 'https://cdn.jsdelivr.net/gh/johan/world.geo.json@master/countries.geo.json';
+  // State/province (admin-1) boundaries, shown at reveal alongside the
+  // country borders. Fetched live, scoped to just the reveal's bounding
+  // box, from Esri's public "World Administrative Divisions" layer — a
+  // queryable vector FeatureServer, not a static file. Several static
+  // "world admin-1 geojson" files circulating online turned out, on
+  // inspection, to only actually cover a handful of large countries
+  // (US/Canada/Australia/Brazil/China/India) despite being labeled as
+  // global; this Esri layer was checked directly (Poland, Kenya, Brazil,
+  // Uganda, Lithuania all returned real subdivisions) and covers the whole
+  // world, so it's the reliable choice even though it needs a network call
+  // per reveal rather than one file loaded once.
+  const STATE_BOUNDARY_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Administrative_Divisions/FeatureServer/0/query';
   const STORAGE_KEY = 'cityGuesserHistory_v1';
   const FN_ROOM = '/.netlify/functions/city-room';
   const FN_LEADERBOARD = '/.netlify/functions/city-leaderboard';
@@ -614,6 +722,14 @@
     });
     return pool;
   }
+  // A play's representative score for ranking — the winning score in a
+  // 2-player game, the only score in a 1-player game.
+  function playScore(p) {
+    return p.mode !== '1p' ? Math.max(p.totals.p1 ?? 0, p.totals.p2 ?? 0) : (p.totals.p1 ?? 0);
+  }
+  function topPlaysByScore(entries, limit) {
+    return entries.slice().sort((a, b) => playScore(b) - playScore(a)).slice(0, limit || 10);
+  }
   function getPercentile(score, pool) {
     if (!pool.length) return null;
     let less = 0, equal = 0;
@@ -631,13 +747,16 @@
   }).setView([20, 0], 2);
 
   // Physical basemap only: terrain, elevation, rivers, coastlines. No city
-  // labels, place names, or political borders by default. World_Physical_Map
-  // has genuinely vivid natural coloring (green lowlands, brown highlands,
-  // blue oceans) baked into the tiles, so no CSS filter is needed. Native
-  // detail tops out at zoom 8 (maxNativeZoom); beyond that Leaflet smoothly
-  // upscales the zoom-8 tiles instead of requesting nonexistent higher-res
-  // ones, so extreme zoom softens rather than pixelating into blocks.
-  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM, maxNativeZoom: TILE_NATIVE_MAX_ZOOM }).addTo(map);
+  // labels, place names, or political borders by default. Two stacked tile
+  // layers, each only active in its own zoom range, so overview zooms get
+  // World_Physical_Map's vivid natural color and zoomed-in views get real
+  // World_Terrain_Base detail (native up to 13) instead of a blurry upscale.
+  L.tileLayer(TILE_LOW_URL, {
+    attribution: TILE_ATTRIBUTION, minZoom: 2, maxZoom: TILE_SWITCH_ZOOM - 1, maxNativeZoom: TILE_LOW_MAX_NATIVE_ZOOM,
+  }).addTo(map);
+  L.tileLayer(TILE_HIGH_URL, {
+    attribution: TILE_ATTRIBUTION, minZoom: TILE_SWITCH_ZOOM, maxZoom: TILE_MAX_ZOOM, maxNativeZoom: TILE_HIGH_MAX_NATIVE_ZOOM,
+  }).addTo(map);
 
   // Borders overlay — clean vector lines (a "halo": a soft dark line under
   // a thin bright line, so it reads on both light and dark terrain), not a
@@ -648,6 +767,43 @@
   let bordersGeoJson = null;
   let borderLayerGroup = null;
   let bordersShown = false;
+  // Country name labels — one small div-icon marker per country, placed at
+  // that country's bounding-box center. Built once (lazily, from the same
+  // borders GeoJSON already being fetched) and cached like the border lines
+  // themselves. Only actually shown above a zoom threshold — at the
+  // whole-world overview (Easy mode's default view) ~180 labels at once
+  // would just be unreadable clutter, so they fade in once zoomed in
+  // enough to read them, which is exactly when a reveal has zoomed into
+  // the relevant area anyway.
+  let countryLabelLayer = null;
+  let countryLabelsWanted = false;
+  const COUNTRY_LABEL_MIN_ZOOM = 4;
+
+  function buildCountryLabels(data) {
+    if (countryLabelLayer) return countryLabelLayer;
+    const markers = [];
+    data.features.forEach((f) => {
+      const name = f.properties && (f.properties.name || f.properties.NAME || f.properties.ADMIN);
+      if (!name) return;
+      let center;
+      try { center = L.geoJSON(f).getBounds().getCenter(); } catch (e) { return; }
+      markers.push(L.marker(center, {
+        icon: L.divIcon({ className: 'country-label', html: `<span>${name}</span>`, iconSize: [0, 0] }),
+        interactive: false, keyboard: false,
+      }));
+    });
+    countryLabelLayer = L.layerGroup(markers);
+    return countryLabelLayer;
+  }
+  function updateCountryLabelVisibility() {
+    if (!countryLabelLayer) return;
+    const shouldShow = countryLabelsWanted && map.getZoom() >= COUNTRY_LABEL_MIN_ZOOM;
+    const isShown = map.hasLayer(countryLabelLayer);
+    if (shouldShow && !isShown) countryLabelLayer.addTo(map);
+    if (!shouldShow && isShown) map.removeLayer(countryLabelLayer);
+  }
+  map.on('zoomend', updateCountryLabelVisibility);
+
   function loadBordersGeoJson() {
     if (bordersGeoJson) return Promise.resolve(bordersGeoJson);
     return fetch(BORDERS_GEOJSON_URL)
@@ -656,7 +812,8 @@
       .catch(() => null);
   }
   function showBorders() {
-    if (bordersShown) return;
+    countryLabelsWanted = true;
+    if (bordersShown) { updateCountryLabelVisibility(); return; }
     bordersShown = true;
     loadBordersGeoJson().then((data) => {
       if (!data || !bordersShown) return; // hidden again before this finished loading
@@ -666,11 +823,74 @@
         borderLayerGroup = L.layerGroup([halo, line]);
       }
       borderLayerGroup.addTo(map);
+      buildCountryLabels(data);
+      updateCountryLabelVisibility();
     });
   }
   function hideBorders() {
     bordersShown = false;
+    countryLabelsWanted = false;
     if (borderLayerGroup && map.hasLayer(borderLayerGroup)) map.removeLayer(borderLayerGroup);
+    updateCountryLabelVisibility();
+  }
+
+  // State/province boundaries and nearby reference-city markers, both shown
+  // only after a guess is submitted (not while guessing — that would give
+  // away the answer), scoped to the small area the reveal map zooms into.
+  let stateBoundaryLayer = null;
+  let stateBoundaryRequestId = 0;
+  let referenceCityMarkers = [];
+
+  function clearStateBoundaries() {
+    stateBoundaryRequestId += 1; // invalidates any in-flight fetch from a previous round
+    if (stateBoundaryLayer) { map.removeLayer(stateBoundaryLayer); stateBoundaryLayer = null; }
+  }
+  function showStateBoundaries(bounds) {
+    clearStateBoundaries();
+    const thisRequestId = stateBoundaryRequestId;
+    const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+    const latSpan = ne.lat - sw.lat, lngSpan = ne.lng - sw.lng;
+    // A very wide-off guess zooms out to a huge bounding box — state lines
+    // aren't legible at that scale anyway, and it'd mean a much heavier
+    // query, so skip fetching them in that case.
+    if (latSpan > 60 || lngSpan > 90) return;
+    const geometry = encodeURIComponent(JSON.stringify({
+      xmin: sw.lng, ymin: sw.lat, xmax: ne.lng, ymax: ne.lat, spatialReference: { wkid: 4326 },
+    }));
+    const url = `${STATE_BOUNDARY_URL}?geometry=${geometry}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,COUNTRY,ADMINTYPE&returnGeometry=true&f=geojson`;
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => {
+        // The reveal may have already moved on to the next round by the
+        // time this resolves (clearStateBoundaries bumps the request id) —
+        // don't draw a stale layer over a new round.
+        if (thisRequestId !== stateBoundaryRequestId || !data || !data.features || !data.features.length) return;
+        stateBoundaryLayer = L.geoJSON(data, {
+          style: { color: '#f8fafc', weight: 1, opacity: 0.5, fillOpacity: 0, dashArray: '2,5' },
+          interactive: false,
+        }).addTo(map);
+        stateBoundaryLayer.bringToBack();
+      })
+      .catch(() => {}); // best-effort — the reveal is still complete without this layer
+  }
+
+  function clearReferenceCityMarkers() {
+    referenceCityMarkers.forEach((m) => map.removeLayer(m));
+    referenceCityMarkers = [];
+  }
+  function showReferenceCityMarkers(bounds, skipName) {
+    clearReferenceCityMarkers();
+    const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+    if ((ne.lat - sw.lat) > 60 || (ne.lng - sw.lng) > 90) return; // same reasoning as showStateBoundaries
+    CITIES.forEach(([name, country, lat, lng]) => {
+      if (name === skipName) return;
+      if (!bounds.contains([lat, lng])) return;
+      const marker = L.circleMarker([lat, lng], {
+        radius: 4, color: '#e2e8f0', weight: 1, fillColor: '#64748b', fillOpacity: 0.9,
+      }).bindTooltip(`${name}, ${country}`, { direction: 'top', offset: [0, -4] });
+      marker.addTo(map);
+      referenceCityMarkers.push(marker);
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -714,13 +934,39 @@
   let onlineRoomId = null;
   let onlinePlayerId = null;
   let onlinePollTimer = null;
+  let onlineCountdownTimer = null;
+  let onlineRoundDeadline = null;
   let onlineRenderKey = null;
   let onlineAnswered = false;
   let onlineGuessLatLng = null;
   let onlineRoundResults = [];
+  let onlineReadyClicked = false; // this device already clicked "Next Round" and is waiting on the other player
+  // True when this tab was opened via a shared invite link (?room=CODE) —
+  // shows a minimal "enter your name and join" screen instead of the full
+  // mode-selection start page, since the mode/room are already decided by
+  // the link. Cleared if the player explicitly asks for the full menu.
+  let directJoinLink = false;
 
   function activePids() { return mode === '2p' ? ['p1', 'p2'] : ['p1']; }
   function currentCity() { return sequence[roundIndex]; }
+
+  // Name inputs start empty (showing only the greyed-out placeholder) rather
+  // than pre-filled with the literal text "Player 1"/"Player 2" — otherwise
+  // typing a real name meant first deleting that placeholder text out of the
+  // box. Once someone customizes a name, that custom value is what shows.
+  function nameInputValue(pid) {
+    const generic = pid === 'p1' ? 'Player 1' : 'Player 2';
+    return playerNames[pid] === generic ? '' : playerNames[pid];
+  }
+
+  // Belt-and-suspenders on top of starting blank: select any existing text
+  // the instant a name field is focused, so clicking in and typing always
+  // replaces rather than requiring a manual delete first.
+  function wireNameInputSelectOnFocus() {
+    overlay.querySelectorAll('#nameInputs input').forEach((inp) => {
+      inp.addEventListener('focus', () => inp.select());
+    });
+  }
 
   // ---------------------------------------------------------------------
   // Setup screen
@@ -747,15 +993,22 @@
     onlineRoundResults = [];
     onlineAnswered = false;
 
+    if (directJoinLink && mode === '2p-online' && onlineTab === 'join') {
+      renderJoinOnlyScreen();
+      return;
+    }
+
     const modeButtons = `
-      <div class="mode-toggle">
-        <button class="mode-btn ${mode === '1p' ? 'active' : ''}" data-mode="1p">${mode === '1p' ? '✓ ' : ''}1 Player</button>
-        <button class="mode-btn ${mode === '2p' ? 'active' : ''}" data-mode="2p">${mode === '2p' ? '✓ ' : ''}2 Players (same screen)</button>
-        <button class="mode-btn ${mode === '2p-online' ? 'active' : ''}" data-mode="2p-online">${mode === '2p-online' ? '✓ ' : ''}2 Players (online)</button>
+      <div class="section-label">Mode</div>
+      <div class="mode-toggle mode-row">
+        <button class="mode-btn ${mode === '1p' ? 'active' : ''}" data-mode="1p">🧑 1 Player${mode === '1p' ? ' ✓' : ''}</button>
+        <button class="mode-btn ${mode === '2p' ? 'active' : ''}" data-mode="2p">👥 2 Players (local)${mode === '2p' ? ' ✓' : ''}</button>
+        <button class="mode-btn ${mode === '2p-online' ? 'active' : ''}" data-mode="2p-online">🌐 2 Players (online)${mode === '2p-online' ? ' ✓' : ''}</button>
       </div>
-      <div class="mode-toggle">
-        <button class="mode-btn ${difficulty === 'easy' ? 'active' : ''}" data-difficulty="easy">${difficulty === 'easy' ? '✓ ' : ''}Easy (borders shown)</button>
-        <button class="mode-btn ${difficulty === 'hard' ? 'active' : ''}" data-difficulty="hard">${difficulty === 'hard' ? '✓ ' : ''}Hard (no borders)</button>
+      <div class="section-label">Difficulty</div>
+      <div class="mode-toggle difficulty-row">
+        <button class="mode-btn diff-btn ${difficulty === 'easy' ? 'active' : ''}" data-difficulty="easy">🟢 Easy (borders shown)${difficulty === 'easy' ? ' ✓' : ''}</button>
+        <button class="mode-btn diff-btn ${difficulty === 'hard' ? 'active' : ''}" data-difficulty="hard">🔴 Hard (no borders)${difficulty === 'hard' ? ' ✓' : ''}</button>
       </div>`;
 
     let bodyHTML;
@@ -768,12 +1021,12 @@
           </div>
           ${onlineTab === 'create' ? `
             <div id="nameInputs">
-              <input id="onlineNameInput" placeholder="Your name" value="${playerNames.p1}" maxlength="20" />
+              <input id="onlineNameInput" placeholder="Your name" value="${nameInputValue('p1')}" maxlength="20" />
             </div>
             <button id="onlineActionBtn" type="button">Create Game</button>
           ` : `
             <div id="nameInputs">
-              <input id="onlineNameInput" placeholder="Your name" value="${playerNames.p2}" maxlength="20" />
+              <input id="onlineNameInput" placeholder="Your name" value="${nameInputValue('p2')}" maxlength="20" />
               <input id="onlineCodeInput" placeholder="Room code" value="${prefillRoomCode}" maxlength="6" style="text-transform:uppercase" />
             </div>
             <button id="onlineActionBtn" type="button">Join Game</button>
@@ -783,8 +1036,8 @@
     } else {
       bodyHTML = `
         <div id="nameInputs" style="${mode === '2p' ? '' : 'display:none'}">
-          <input id="p1Name" placeholder="Player 1 name" value="${playerNames.p1}" maxlength="20" />
-          <input id="p2Name" placeholder="Player 2 name" value="${playerNames.p2}" maxlength="20" />
+          <input id="p1Name" placeholder="Player 1 name" value="${nameInputValue('p1')}" maxlength="20" />
+          <input id="p2Name" placeholder="Player 2 name" value="${nameInputValue('p2')}" maxlength="20" />
         </div>
         <button id="startBtn">Start Game</button>`;
     }
@@ -831,7 +1084,35 @@
       });
     }
 
+    wireNameInputSelectOnFocus();
     refreshHistoryTeaser();
+  }
+
+  // Minimal screen shown when this tab was opened via a shared invite link
+  // (?room=CODE) — just a name field and a Join button, skipping the full
+  // mode/difficulty selection page since the game is already decided by the
+  // link. A small link at the bottom is the only way back to the full menu.
+  function renderJoinOnlyScreen() {
+    overlay.innerHTML = `
+      <div class="overlay-inner">
+        <h1>City <span>Guesser</span></h1>
+        <p>You've been invited to a game. Enter your name to join room <strong>${prefillRoomCode}</strong>.</p>
+        <div id="nameInputs">
+          <input id="onlineNameInput" placeholder="Your name" value="${nameInputValue('p2')}" maxlength="20" />
+        </div>
+        <button id="onlineActionBtn" type="button">Join Game</button>
+        <p class="status-note" id="onlineError"></p>
+        <p class="history-teaser"><a href="#" id="fullMenuLink" style="color:inherit;">Not joining a game? Open the main menu</a></p>
+      </div>
+    `;
+    overlay.classList.remove('hidden');
+    document.getElementById('onlineActionBtn').addEventListener('click', handleOnlineAction);
+    document.getElementById('fullMenuLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      directJoinLink = false;
+      renderSetupScreen();
+    });
+    wireNameInputSelectOnFocus();
   }
 
   function captureNameInputs() {
@@ -888,6 +1169,8 @@
     if (actualMarker) { map.removeLayer(actualMarker); actualMarker = null; }
     roundLines.forEach((l) => map.removeLayer(l));
     roundLines = [];
+    clearStateBoundaries();
+    clearReferenceCityMarkers();
   }
 
   // In same-screen 2-player mode, only the currently active player's pin
@@ -1013,6 +1296,8 @@
     gameRounds.push(roundEntry);
     map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
     showBorders(); // always reveal borders once the answer is shown, regardless of difficulty
+    showStateBoundaries(map.getBounds());
+    showReferenceCityMarkers(map.getBounds(), name);
 
     renderResultPanel(roundEntry);
     updateHud();
@@ -1022,6 +1307,8 @@
   function renderResultPanel(roundEntry) {
     autoAdvanceNote.style.display = 'none';
     nextBtn.style.display = '';
+    nextBtn.disabled = false;
+    nextBtn.textContent = 'Next City →';
     resultCity.textContent = `${roundEntry.name}, ${roundEntry.country}`;
     if (mode === '1p') {
       const g = roundEntry.guesses.p1;
@@ -1037,7 +1324,7 @@
   }
 
   nextBtn.addEventListener('click', () => {
-    if (mode === '2p-online') return; // online rounds auto-advance server-side
+    if (mode === '2p-online') { advanceOnlineRound(); return; }
     roundIndex += 1;
     if (roundIndex >= ROUNDS) {
       finishGame();
@@ -1045,6 +1332,28 @@
       startRound();
     }
   });
+
+  // Online rounds used to auto-advance a fixed number of seconds after the
+  // reveal. Now both players explicitly click "Next Round" — this signals
+  // readiness to the server; once both players have signalled (or a long
+  // safety timeout elapses so an abandoned room doesn't hang forever), the
+  // server moves everyone to the next round together.
+  async function advanceOnlineRound() {
+    if (onlineReadyClicked) return;
+    onlineReadyClicked = true;
+    nextBtn.disabled = true;
+    nextBtn.textContent = 'Waiting for opponent…';
+    try {
+      const res = await fetch(FN_ROOM, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ready', roomId: onlineRoomId, playerId: onlinePlayerId }),
+      });
+      const data = await res.json();
+      if (res.ok) handleOnlineState(data.state);
+    } catch (e) {
+      // the next poll tick will reconcile state regardless
+    }
+  }
 
   // ---------------------------------------------------------------------
   // End of local game: record to the (global, with local fallback)
@@ -1074,8 +1383,8 @@
     const priorEntries = await fetchLeaderboardEntries(500); // snapshot BEFORE this game is added
     const poolBefore = scorePoolFrom(priorEntries);
     const posted = await postPlay(play);
-    const recentEntries = posted ? priorEntries.concat([play]) : loadHistoryLocal();
-    renderEndScreen(play, poolBefore, recentEntries.slice(-8).reverse());
+    const allEntries = posted ? priorEntries.concat([play]) : loadHistoryLocal();
+    renderEndScreen(play, poolBefore, topPlaysByScore(allEntries, 10));
   }
 
   function percentileLine(label, score, pool) {
@@ -1084,7 +1393,7 @@
     return `${label ? label + ': ' : ''}better than <strong>${pct}%</strong> of ${pool.length} previous game${pool.length === 1 ? '' : 's'}.`;
   }
 
-  function renderEndScreen(play, poolBefore, recentPlays, isCurrentFn) {
+  function renderEndScreen(play, poolBefore, topPlays, isCurrentFn) {
     const twoPlayer = play.mode !== '1p';
     const isCurrent = isCurrentFn || ((p) => p.id === play.id);
 
@@ -1113,13 +1422,13 @@
       return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${r.guesses.p1.distanceKm.toFixed(1)} km / ${r.guesses.p1.points.toLocaleString()}</td><td>${r.guesses.p2.distanceKm.toFixed(1)} km / ${r.guesses.p2.points.toLocaleString()}</td></tr>`;
     }).join('');
 
-    const leaderboardRows = recentPlays.map((p) => {
+    const leaderboardRows = topPlays.map((p, i) => {
       const date = new Date(p.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       const modeLabel = p.mode === '1p' ? '1P' : p.mode === '2p-online' ? '2P online' : '2P';
       const scoreText = p.mode !== '1p'
         ? `<span style="color:${PLAYER_COLORS.p1}">${p.players[0].name} ${p.totals.p1.toLocaleString()}</span> vs <span style="color:${PLAYER_COLORS.p2}">${p.players[1] ? p.players[1].name : '?'} ${(p.totals.p2 ?? 0).toLocaleString()}</span>`
         : `${p.totals.p1.toLocaleString()}`;
-      return `<tr class="${isCurrent(p) ? 'current-play' : ''}"><td>${date}</td><td>${modeLabel}</td><td>${scoreText}</td></tr>`;
+      return `<tr class="${isCurrent(p) ? 'current-play' : ''}"><td>#${i + 1}</td><td>${date}</td><td>${modeLabel}</td><td>${scoreText}</td></tr>`;
     }).join('');
 
     overlay.innerHTML = `
@@ -1133,9 +1442,9 @@
           <thead>${roundTableHeader}</thead>
           <tbody>${roundRows}</tbody>
         </table>
-        <div class="section-title">Leaderboard — recent plays across all devices</div>
+        <div class="section-title">Leaderboard — best scores of all time</div>
         <table class="summary-table">
-          <thead><tr><th>Date</th><th>Mode</th><th>Score</th></tr></thead>
+          <thead><tr><th>#</th><th>Date</th><th>Mode</th><th>Score</th></tr></thead>
           <tbody>${leaderboardRows}</tbody>
         </table>
         <div class="end-actions">
@@ -1165,7 +1474,8 @@
       minZoom: 1,
       maxZoom: TILE_MAX_ZOOM,
     }).setView([20, 0], 1);
-    L.tileLayer(TILE_URL, { maxZoom: TILE_MAX_ZOOM, maxNativeZoom: TILE_NATIVE_MAX_ZOOM }).addTo(reviewMapInstance);
+    L.tileLayer(TILE_LOW_URL, { minZoom: 1, maxZoom: TILE_SWITCH_ZOOM - 1, maxNativeZoom: TILE_LOW_MAX_NATIVE_ZOOM }).addTo(reviewMapInstance);
+    L.tileLayer(TILE_HIGH_URL, { minZoom: TILE_SWITCH_ZOOM, maxZoom: TILE_MAX_ZOOM, maxNativeZoom: TILE_HIGH_MAX_NATIVE_ZOOM }).addTo(reviewMapInstance);
     loadBordersGeoJson().then((data) => {
       if (!data || !reviewMapInstance) return;
       L.geoJSON(data, { style: { color: '#0f172a', weight: 3, opacity: 0.5, fillOpacity: 0 }, interactive: false }).addTo(reviewMapInstance);
@@ -1217,11 +1527,15 @@
         if (!res.ok) throw new Error(data.error || 'Could not create a game.');
         onlineRoomId = data.roomId;
         onlinePlayerId = data.playerId;
+        directJoinLink = false;
         renderOnlineWaitingScreen();
         startOnlinePolling();
       } else {
+        // The minimal invite-link join screen doesn't render a code field —
+        // the code is already known from the ?room= link — so fall back to
+        // that when #onlineCodeInput isn't on the page.
         const codeInput = document.getElementById('onlineCodeInput');
-        const code = (codeInput.value || '').trim().toUpperCase();
+        const code = (codeInput ? codeInput.value : prefillRoomCode || '').trim().toUpperCase();
         if (!code) throw new Error('Enter the room code your friend shared.');
         playerNames.p2 = name;
         const res = await fetch(FN_ROOM, {
@@ -1234,6 +1548,7 @@
         onlinePlayerId = data.playerId;
         onlineRoundResults = [];
         onlineRenderKey = null;
+        directJoinLink = false; // the join-link has served its purpose — "Play Again" later should reach the full menu, not this stale room's join screen
         overlay.classList.add('hidden');
         startOnlinePolling();
       }
@@ -1273,10 +1588,15 @@
   function startOnlinePolling() {
     stopOnlinePolling();
     onlinePollTimer = setInterval(pollOnlineState, 1600);
+    onlineCountdownTimer = setInterval(() => {
+      if (onlineRoundDeadline) updateOnlineTimer(onlineRoundDeadline);
+    }, 500);
     pollOnlineState();
   }
   function stopOnlinePolling() {
     if (onlinePollTimer) { clearInterval(onlinePollTimer); onlinePollTimer = null; }
+    if (onlineCountdownTimer) { clearInterval(onlineCountdownTimer); onlineCountdownTimer = null; }
+    onlineRoundDeadline = null;
   }
 
   async function pollOnlineState() {
@@ -1313,10 +1633,12 @@
 
     const key = `${state.round}:${state.status}`;
     if (state.status === 'in_progress') {
+      onlineRoundDeadline = state.roundDeadline;
       if (key !== onlineRenderKey) { onlineRenderKey = key; startOnlineRoundUI(state); }
       updateOnlineTimer(state.roundDeadline);
       updateHud();
     } else if (state.status === 'revealing') {
+      onlineRoundDeadline = null; // stop the countdown/auto-submit ticker mid-reveal
       if (key !== onlineRenderKey) {
         onlineRenderKey = key;
         onlineRoundResults.push(state.lastRoundResult);
@@ -1333,6 +1655,7 @@
     if (difficulty === 'easy') showBorders(); else hideBorders();
     onlineAnswered = false;
     onlineGuessLatLng = null;
+    onlineReadyClicked = false;
     resultPanel.classList.remove('show');
     playerSwitchEl.style.display = 'none';
     playerSwitchEl.innerHTML = '';
@@ -1347,9 +1670,16 @@
 
   function updateOnlineTimer(deadline) {
     const el = document.getElementById('onlineTimer');
-    if (!el) return;
-    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
-    el.textContent = `${remaining}s left`;
+    if (el) {
+      const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      el.textContent = `${remaining}s left`;
+    }
+    // If a pin was placed but never explicitly submitted and the round is
+    // about to end, auto-submit that pin rather than losing the click —
+    // matches the local-mode expectation that a placed pin is your answer.
+    if (!onlineAnswered && onlineGuessLatLng && Date.now() >= deadline - 300) {
+      submitOnlineGuess();
+    }
   }
 
   async function submitOnlineGuess() {
@@ -1387,6 +1717,8 @@
       boundsPoints.push([g.lat, g.lng]);
     });
     map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
+    showStateBoundaries(map.getBounds());
+    showReferenceCityMarkers(map.getBounds(), r.name);
 
     resultCity.textContent = `${r.name}, ${r.country}`;
     const g1 = r.guesses.p1, g2 = r.guesses.p2;
@@ -1394,8 +1726,10 @@
     resultDistance.innerHTML = `<span style="color:${PLAYER_COLORS.p1}">${playerNames.p1}</span>: ${distText(g1)} &nbsp;·&nbsp; <span style="color:${PLAYER_COLORS.p2}">${playerNames.p2}</span>: ${distText(g2)}`;
     const winner = g1.points === g2.points ? 'Tie this round' : `${g1.points > g2.points ? playerNames.p1 : playerNames.p2} wins this round`;
     resultPoints.innerHTML = `<span style="color:${PLAYER_COLORS.p1}">+${g1.points.toLocaleString()}</span> &nbsp;·&nbsp; <span style="color:${PLAYER_COLORS.p2}">+${g2.points.toLocaleString()}</span><br><span class="winner-note">${winner}</span>`;
-    autoAdvanceNote.style.display = 'block';
-    nextBtn.style.display = 'none';
+    autoAdvanceNote.style.display = 'none';
+    nextBtn.style.display = '';
+    nextBtn.disabled = false;
+    nextBtn.textContent = 'Next Round →';
     resultPanel.classList.add('show');
     updateHud();
   }
@@ -1420,9 +1754,9 @@
     const allEntries = await fetchLeaderboardEntries(500);
     const isThisGame = (p) => typeof p.id === 'string' && p.id.startsWith(`${roomIdForMatch}-`);
     const poolBefore = scorePoolFrom(allEntries.filter((p) => !isThisGame(p)));
-    const recentPlays = allEntries.slice(-8).reverse();
+    const topPlays = topPlaysByScore(allEntries, 10);
 
-    renderEndScreen(play, poolBefore, recentPlays, isThisGame);
+    renderEndScreen(play, poolBefore, topPlays, isThisGame);
   }
 
   // ---------------------------------------------------------------------
@@ -1434,6 +1768,7 @@
     mode = '2p-online';
     onlineTab = 'join';
     prefillRoomCode = roomParam;
+    directJoinLink = true;
   }
 
   renderSetupScreen();
