@@ -282,7 +282,7 @@ function renderLanding() {
   html += '<div class="scoring-explainer"><h3>How scoring works</h3>' +
     '<p class="note">Each round you guess a country\'s population and score up to 100 points based on how close you are.</p>' +
     '<p class="note">For countries with a population <b>above 500,000</b>, score is based on <b>percent difference</b> — e.g. being 10% off costs 10 points.</p>' +
-    '<p class="note">For countries <b>under 500,000</b>, percent differences get unfair fast, so score is based on <b>absolute difference</b> instead — being off by 5,000 people only costs 1 point. At most 2 of these smaller countries show up in any single game.</p></div>';
+    '<p class="note">For countries under 500,000, score is based on absolute difference instead. At most 2 of these smaller countries show up in any single game.</p></div>';
   html += '<div class="mode-select">' +
       '<button class="mode-btn' + (landingMode === 'solo' ? ' active' : '') + '" id="btnModeSolo">1 Player</button>' +
       '<button class="mode-btn' + (landingMode === 'duo' ? ' active' : '') + '" id="btnModeDuo">2 Players (Online)</button>' +
