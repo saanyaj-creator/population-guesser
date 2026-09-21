@@ -12,8 +12,26 @@ const REVEAL_MS = 15000;
 const MAX_PLAYERS_BY_MODE = { solo: 1, duo: 2, trio: 3 };
 const ROOM_TTL_MS = 1000 * 60 * 60 * 6; // rooms older than 6h are treated as gone
 
-function scoreFor(pctOff) {
-  return Math.max(0, Math.round(100 - pctOff));
+// Countries below this are small enough that percent-difference scoring
+// gets unforgiving in a way that doesn't feel fair — being off by a few
+// thousand people on a country of a few hundred can swing the percentage
+// wildly. Below the threshold we score on absolute difference instead,
+// using the same 500k figure as the "full miss" distance so the two scales
+// meet at a sensible point right at the boundary.
+const SMALL_POP_THRESHOLD = 500000;
+const MAX_SMALL_POP_COUNTRIES_PER_GAME = 2;
+
+// Returns { pct, score }. `pct` is kept for the reveal screen's "off by X%"
+// display even for small countries, computed the normal (percent) way for
+// consistency of that label — it's just not what score is based on there.
+function scoreGuess(guess, actual) {
+  const pct = Math.abs(guess - actual) / actual * 100;
+  if (actual < SMALL_POP_THRESHOLD) {
+    const absDiff = Math.abs(guess - actual);
+    const score = Math.max(0, Math.round(100 - (absDiff / SMALL_POP_THRESHOLD) * 100));
+    return { pct: pct, score: score };
+  }
+  return { pct: pct, score: Math.max(0, Math.round(100 - pct)) };
 }
 
 function randomRoomId() {
@@ -33,13 +51,28 @@ function shuffle(arr) {
 }
 
 function pickCountry(state) {
-  if (state.orderIdx >= state.order.length) {
-    state.order = shuffle(COUNTRIES.map((_, i) => i));
-    state.orderIdx = 0;
+  if (state.smallPopCount === undefined) state.smallPopCount = 0;
+  // Guard against an infinite loop; there are always far more than
+  // MAX_SMALL_POP_COUNTRIES_PER_GAME non-small countries in the list, so
+  // this should resolve in well under one lap, but never loop forever.
+  for (let guard = 0; guard < COUNTRIES.length * 3; guard++) {
+    if (state.orderIdx >= state.order.length) {
+      state.order = shuffle(COUNTRIES.map((_, i) => i));
+      state.orderIdx = 0;
+    }
+    const country = COUNTRIES[state.order[state.orderIdx]];
+    state.orderIdx += 1;
+    const isSmall = country.pop < SMALL_POP_THRESHOLD;
+    if (isSmall && state.smallPopCount >= MAX_SMALL_POP_COUNTRIES_PER_GAME) {
+      continue; // already used our quota of small-population countries this game
+    }
+    if (isSmall) state.smallPopCount += 1;
+    return country;
   }
-  const country = COUNTRIES[state.order[state.orderIdx]];
+  // Should be unreachable, but fall back to whatever's next rather than crash.
+  const fallback = COUNTRIES[state.order[state.orderIdx % state.order.length]];
   state.orderIdx += 1;
-  return country;
+  return fallback;
 }
 
 function startRound(state) {
@@ -161,6 +194,7 @@ export default async (req, context) => {
         mode: mode,
         order: shuffle(COUNTRIES.map((_, i) => i)),
         orderIdx: 0,
+        smallPopCount: 0,
         round: 0,
         current: null,
         maxRounds: MAX_ROUNDS,
@@ -217,6 +251,7 @@ export default async (req, context) => {
       state.history = [];
       state.order = shuffle(COUNTRIES.map((_, i) => i));
       state.orderIdx = 0;
+      state.smallPopCount = 0;
       state.roundDeadline = null;
       state.revealUntil = null;
       Object.keys(state.players).forEach(pid => { state.players[pid].totalScore = 0; });
@@ -257,8 +292,8 @@ export default async (req, context) => {
       if (!(playerId in state.players)) return json({ error: 'Unknown player.' }, 400);
       if (state.status === 'in_progress' && !(playerId in state.roundAnswers) && isFinite(guess) && guess >= 0) {
         const actual = state.current.pop;
-        const pct = Math.abs(guess - actual) / actual * 100;
-        state.roundAnswers[playerId] = { guess: guess, pct: pct, score: scoreFor(pct), timedOut: false };
+        const result = scoreGuess(guess, actual);
+        state.roundAnswers[playerId] = { guess: guess, pct: result.pct, score: result.score, timedOut: false };
       }
       resolveRoundIfNeeded(state);
       await store.setJSON(roomId, state);

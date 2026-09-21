@@ -23,6 +23,14 @@
   .subtitle { color: var(--muted); margin: 0 0 20px 0; font-size: 0.95rem; }
   .country-name { font-size: 2.1rem; font-weight: 700; margin: 18px 0 6px 0; }
   .round-label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .top-bar { display: flex; justify-content: space-between; align-items: center; }
+  .end-game-link { background: none; border: none; color: var(--muted); font-size: 0.78rem; cursor: pointer; text-decoration: underline; padding: 2px 0; }
+  .end-game-link:hover { color: var(--bad); }
+  .landing-map { margin: 4px 0 18px 0; border-radius: 12px; overflow: hidden; background: #0b1a2e; }
+  .landing-map svg { width: 100%; height: auto; display: block; opacity: 0.9; }
+  .scoring-explainer { background: var(--panel-2); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+  .scoring-explainer h3 { margin: 0 0 8px 0; font-size: 0.95rem; }
+  .scoring-explainer .note { margin: 6px 0 0 0; }
   .timer-display { margin-top: 8px; font-size: 1.3rem; font-weight: 800; color: var(--accent); }
   .timer-display.low { color: var(--bad); }
   input[type="text"] {
@@ -269,7 +277,13 @@ function render() {
 
 function renderLanding() {
   historyCard.style.display = 'none';
-  let html = '<div class="mode-select">' +
+  let html = '<div class="landing-map"><svg viewBox="' + WORLD_MAP_VB + '" xmlns="http://www.w3.org/2000/svg">' +
+    '<g fill="#16233d" stroke="#0d1830" stroke-width="0.6">' + WORLD_MAP_PATHS + '</g></svg></div>';
+  html += '<div class="scoring-explainer"><h3>How scoring works</h3>' +
+    '<p class="note">Each round you guess a country\'s population and score up to 100 points based on how close you are.</p>' +
+    '<p class="note">For countries with a population <b>above 500,000</b>, score is based on <b>percent difference</b> — e.g. being 10% off costs 10 points.</p>' +
+    '<p class="note">For countries <b>under 500,000</b>, percent differences get unfair fast, so score is based on <b>absolute difference</b> instead — being off by 5,000 people only costs 1 point. At most 2 of these smaller countries show up in any single game.</p></div>';
+  html += '<div class="mode-select">' +
       '<button class="mode-btn' + (landingMode === 'solo' ? ' active' : '') + '" id="btnModeSolo">1 Player</button>' +
       '<button class="mode-btn' + (landingMode === 'duo' ? ' active' : '') + '" id="btnModeDuo">2 Players (Online)</button>' +
       '<button class="mode-btn' + (landingMode === 'trio' ? ' active' : '') + '" id="btnModeTrio">3 Players (Online)</button>' +
@@ -592,7 +606,8 @@ function renderGame(state) {
   const iAnswered = !!state.answeredFlags[myId];
 
   let body = '';
-  body += '<div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>';
+  body += '<div class="top-bar"><div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>' +
+    '<button class="end-game-link" id="endGameBtn" type="button">End Game</button></div>';
   body += '<div class="country-name">' + (state.current ? state.current.name : '…') + '</div>';
 
   if (state.status === 'in_progress') {
@@ -645,8 +660,6 @@ function renderGame(state) {
     statGroup(me.name + (isSolo ? '' : ' (you)'), me, state.round) +
     otherIds.map(pid => statGroup(state.players[pid].name, state.players[pid], state.round)).join('') +
     '</div>';
-
-  body += '<div class="actions"><button class="btn btn-secondary" id="endGameBtn">End Game</button></div>';
 
   app.innerHTML = body;
 
@@ -725,7 +738,8 @@ function renderGameLocal(state, preservedGuess) {
   }
 
   let body = '';
-  body += '<div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>';
+  body += '<div class="top-bar"><div class="round-label">Round ' + state.round + ' of ' + state.maxRounds + '</div>' +
+    '<button class="end-game-link" id="endGameBtn" type="button">End Game</button></div>';
   body += '<div class="country-name">' + (state.current ? state.current.name : '…') + '</div>';
 
   let showingInput = false;
@@ -762,7 +776,6 @@ function renderGameLocal(state, preservedGuess) {
   }
 
   body += '<div class="stats-row">' + statGroup(p1.name, p1, state.round) + statGroup(p2.name, p2, state.round) + '</div>';
-  body += '<div class="actions"><button class="btn btn-secondary" id="endGameBtn">End Game</button></div>';
 
   app.innerHTML = body;
 
@@ -865,6 +878,10 @@ function renderReady(state, myId, isSolo, otherIds, me) {
 }
 
 async function endGame() {
+  // Now a small link at the top of the screen rather than a big button next
+  // to Next Round, but a confirm is still worth it — this ends the game for
+  // everyone in the room, not just the clicker.
+  if (!window.confirm('End the game now for everyone? This finishes the game early — you can\'t undo it.')) return;
   try {
     const data = await api('end', { roomId: myRoomId });
     lastState = data.state;
@@ -1026,22 +1043,26 @@ function renderEnded(state) {
   const me = state.players[myId];
 
   const youSuffix = (isSolo || localMode) ? '' : ' (you)';
+  const endedEarly = state.round < state.maxRounds;
 
   let banner = '';
   if (isSolo) {
-    banner = '<div class="winner-banner">Nice work — game complete!</div>';
+    banner = endedEarly
+      ? '<div class="winner-banner" style="background:rgba(148,163,184,0.15); color:var(--muted);">Game ended early — ' + state.round + ' of ' + state.maxRounds + ' rounds played.</div>'
+      : '<div class="winner-banner">Nice work — game complete!</div>';
   } else {
     const maxScore = Math.max.apply(null, allIds.map(pid => state.players[pid].totalScore));
     const winners = allIds.filter(pid => state.players[pid].totalScore === maxScore);
+    const earlyNote = endedEarly ? ' (ended early — ' + state.round + ' of ' + state.maxRounds + ' rounds played)' : '';
     if (winners.length > 1) {
-      banner = '<div class="winner-banner">It\'s a tie between ' + winners.map(pid => state.players[pid].name + (!localMode && pid === myId ? youSuffix : '')).join(' and ') + '!</div>';
+      banner = '<div class="winner-banner">It\'s a tie between ' + winners.map(pid => state.players[pid].name + (!localMode && pid === myId ? youSuffix : '')).join(' and ') + '!' + earlyNote + '</div>';
     } else {
       const winnerId = winners[0];
-      banner = '<div class="winner-banner">' + state.players[winnerId].name + (!localMode && winnerId === myId ? youSuffix : '') + ' wins!</div>';
+      banner = '<div class="winner-banner">' + state.players[winnerId].name + (!localMode && winnerId === myId ? youSuffix : '') + ' wins!' + earlyNote + '</div>';
     }
   }
 
-  let html = '<div class="round-label">Game Over</div><div class="country-name" style="font-size:1.6rem;">Here\'s how it went</div>';
+  let html = '<div class="round-label">' + (endedEarly ? 'Game Ended Early' : 'Game Over') + '</div><div class="country-name" style="font-size:1.6rem;">Here\'s how it went</div>';
   html += banner;
   html += '<div class="end-stats">' +
     endCard(me.name + youSuffix, me, state.round) +
