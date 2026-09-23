@@ -110,11 +110,17 @@
   .map-note { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
   .error-box { background: rgba(248,113,113,0.15); color: var(--bad); padding: 12px 16px; border-radius: 10px; margin: 14px 0; font-size: 0.9rem; }
   .leaderboard-section { margin-top: 26px; }
-  .leaderboard-section h3 { margin: 0 0 10px 0; font-size: 1rem; }
+  .leaderboard-section .round-label, .rounds-table-section .round-label { margin-bottom: 10px; }
+  .rounds-table-section { margin-top: 26px; }
   table.leaderboard { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   table.leaderboard th, table.leaderboard td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-2); }
   table.leaderboard th { color: var(--muted); font-weight: 600; }
   .back-link { color: var(--muted); font-size: 0.85rem; cursor: pointer; text-decoration: underline; }
+  .scoreboard-pill { display: inline-flex; gap: 26px; align-items: flex-start; background: var(--panel-2); border-radius: 14px; padding: 12px 20px; margin: 14px 0 6px 0; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+  .scoreboard-col { display: flex; flex-direction: column; gap: 3px; }
+  .scoreboard-label { font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .scoreboard-round-value { font-size: 1.5rem; font-weight: 800; }
+  .scoreboard-player { font-weight: 700; font-size: 0.95rem; white-space: nowrap; }
   @media (max-width: 720px) { .layout { flex-direction: column; } }
 </style>
 </head>
@@ -181,7 +187,7 @@ function loadHistory() {
   try { return JSON.parse(localStorage.getItem(LB_KEY) || '[]'); } catch (e) { return []; }
 }
 
-function saveGameRecord(state) {
+function saveGameRecord(state, isLocalMode) {
   // Records every player in the room (2 for duo, 3 for trio, 1 for solo),
   // not just "me" — so a trio game's full roster shows up on the leaderboard.
   const players = Object.keys(state.players).map(pid => {
@@ -189,7 +195,12 @@ function saveGameRecord(state) {
     const rounds = state.history.filter(h => h.playerId === pid).length;
     return { name: p.name, totalScore: p.totalScore, avg: rounds ? Math.round(p.totalScore / rounds) : 0 };
   });
-  const record = { date: new Date().toISOString(), mode: state.mode || 'duo', rounds: state.round, players: players };
+  // 'duo' rooms are used for both cross-device online play and same-screen
+  // pass-and-play; tag which one this was so the leaderboard can label it
+  // accurately instead of calling a same-screen game "online".
+  const baseMode = state.mode || 'duo';
+  const mode = (baseMode === 'duo' && isLocalMode) ? 'local' : baseMode;
+  const record = { date: new Date().toISOString(), mode: mode, rounds: state.round, players: players };
   let history = loadHistory();
   history.push(record);
   if (history.length > 200) history = history.slice(-200);
@@ -218,16 +229,54 @@ function renderPercentileHtml(myName, myScore, history) {
   return html;
 }
 
+function modeLabel(mode) {
+  if (mode === 'solo') return '1P';
+  if (mode === 'trio') return '3P online';
+  if (mode === 'local') return '2P';
+  return '2P online';
+}
+
+// One row per past game (not per player), most recent first, each player's
+// score colored to match their color everywhere else in the app.
 function renderLeaderboardHtml(history) {
-  const flat = [];
-  history.forEach(r => r.players.forEach(p => flat.push({ date: r.date, mode: r.mode, name: p.name, score: p.totalScore })));
-  flat.sort((a, b) => b.score - a.score);
-  const top = flat.slice(0, 5);
-  if (top.length === 0) return '';
-  const rows = top.map(r => (
-    '<tr><td>' + new Date(r.date).toLocaleDateString() + '</td><td>' + r.name + '</td><td>' + r.mode + '</td><td>' + r.score + '</td></tr>'
-  )).join('');
-  return '<table class="leaderboard"><thead><tr><th>Date</th><th>Player</th><th>Mode</th><th>Score</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  const recent = history.slice(-6).reverse();
+  if (recent.length === 0) return '';
+  const rows = recent.map(r => {
+    const scoreHtml = r.players.map((p, i) => {
+      const color = PLAYER_COLORS['p' + (i + 1)] || '#9ca3af';
+      return '<b style="color:' + color + ';">' + p.name + ' ' + fmt(p.totalScore) + '</b>';
+    }).join(' <span style="color:var(--muted); font-weight:500;">vs</span> ');
+    const dateStr = new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return '<tr><td>' + dateStr + '</td><td>' + modeLabel(r.mode) + '</td><td>' + scoreHtml + '</td></tr>';
+  }).join('');
+  return '<table class="leaderboard"><thead><tr><th>Date</th><th>Mode</th><th>Score</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// A compact table of every round this game: one row per round, one column
+// per player, "guess / score" in each cell. Replaces trying to read this
+// out of the per-country charts one at a time.
+function renderRoundsTable(state, colorFor) {
+  const allIds = Object.keys(state.players);
+  const byRound = {};
+  state.history.forEach(h => {
+    if (!byRound[h.round]) byRound[h.round] = {};
+    byRound[h.round][h.playerId] = h;
+  });
+  const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+  if (rounds.length === 0) return '<p class="note">No rounds played.</p>';
+  const headerCells = allIds.map(pid => '<th style="color:' + colorFor(pid) + ';">' + state.players[pid].name + '</th>').join('');
+  const rows = rounds.map(r => {
+    const group = byRound[r];
+    const countryName = (allIds.map(pid => group[pid] && group[pid].name).filter(Boolean)[0]) || '';
+    const cells = allIds.map(pid => {
+      const h = group[pid];
+      if (!h) return '<td>—</td>';
+      if (h.timedOut) return '<td style="color:var(--muted);">No answer</td>';
+      return '<td>' + fmt(h.guess) + ' / ' + h.score + '</td>';
+    }).join('');
+    return '<tr><td>' + r + '</td><td>' + countryName + '</td>' + cells + '</tr>';
+  }).join('');
+  return '<table class="leaderboard"><thead><tr><th>#</th><th>Country</th>' + headerCells + '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 function exportHistory() {
@@ -656,10 +705,7 @@ function renderGame(state) {
     body += '<div class="actions" style="margin-top:14px;"><button class="btn" id="nextRoundBtn" type="button">' + (state.round >= state.maxRounds ? 'See Final Results' : 'Next Round') + '</button></div>';
   }
 
-  body += '<div class="stats-row">' +
-    statGroup(me.name + (isSolo ? '' : ' (you)'), me, state.round) +
-    otherIds.map(pid => statGroup(state.players[pid].name, state.players[pid], state.round)).join('') +
-    '</div>';
+  body += scoreboardPillHtml(state);
 
   app.innerHTML = body;
 
@@ -775,7 +821,7 @@ function renderGameLocal(state, preservedGuess) {
     body += '<div class="actions" style="margin-top:14px;"><button class="btn" id="nextRoundBtn" type="button">' + (state.round >= state.maxRounds ? 'See Final Results' : 'Next Round') + '</button></div>';
   }
 
-  body += '<div class="stats-row">' + statGroup(p1.name, p1, state.round) + statGroup(p2.name, p2, state.round) + '</div>';
+  body += scoreboardPillHtml(state);
 
   app.innerHTML = body;
 
@@ -891,15 +937,18 @@ async function endGame() {
   }
 }
 
-function statGroup(name, player, roundsPlayed) {
-  const rounds = Math.max(0, roundsPlayed - (lastState && lastState.status === 'in_progress' ? 1 : 0));
-  const avg = rounds ? Math.round(player.totalScore / rounds) : 0;
-  return '<div class="stats-group"><div class="stats-group-name">' + name + '</div>' +
-    '<div class="stats-group-values">' +
-      '<div class="stat"><div class="stat-value">' + rounds + '</div><div class="stat-label">Rounds</div></div>' +
-      '<div class="stat"><div class="stat-value">' + player.totalScore + '</div><div class="stat-label">Total</div></div>' +
-      '<div class="stat"><div class="stat-value">' + avg + '</div><div class="stat-label">Avg</div></div>' +
-    '</div></div>';
+// Compact "ROUND x/y — SCORE" pill shown during play, replacing the old
+// per-player Rounds/Total/Avg boxes — just the round number and each
+// player's running score, colored to match them everywhere else.
+function scoreboardPillHtml(state) {
+  const allIds = Object.keys(state.players);
+  const scoreLines = allIds.map(pid => (
+    '<div class="scoreboard-player" style="color:' + (PLAYER_COLORS[pid] || '#9ca3af') + ';">' + state.players[pid].name + ': ' + fmt(state.players[pid].totalScore) + '</div>'
+  )).join('');
+  return '<div class="scoreboard-pill">' +
+    '<div class="scoreboard-col"><div class="scoreboard-label">Round</div><div class="scoreboard-round-value">' + state.round + ' / ' + state.maxRounds + '</div></div>' +
+    '<div class="scoreboard-col"><div class="scoreboard-label">Score</div>' + scoreLines + '</div>' +
+    '</div>';
 }
 
 let submittingGuess = false;
@@ -1062,24 +1111,27 @@ function renderEnded(state) {
     }
   }
 
+  const colorFor = pid => PLAYER_COLORS[pid] || '#9ca3af';
+
   let html = '<div class="round-label">' + (endedEarly ? 'Game Ended Early' : 'Game Over') + '</div><div class="country-name" style="font-size:1.6rem;">Here\'s how it went</div>';
   html += banner;
   html += '<div class="end-stats">' +
     endCard(me.name + youSuffix, me, state.round) +
     otherIds.map(pid => endCard(state.players[pid].name, state.players[pid], state.round)).join('') +
     '</div>';
-  html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
-    '<p class="note" id="mapInfo">Click a dot to see the country and its actual population.</p>' +
-    '<p class="map-note">Dots are placed by each country\'s approximate center. Map outline: <a href="https://github.com/flekschas/simple-world-map" target="_blank" rel="noopener" style="color:var(--accent);">Simple World Map</a> (CC BY-SA 3.0).</p></div>';
 
-  const saved = saveGameRecord(state);
-  html += '<div class="leaderboard-section">' +
-    '<h3>How this game compares</h3>' +
-    renderPercentileHtml(me.name, me.totalScore, saved.history) +
+  html += '<div class="rounds-table-section"><div class="round-label">This Game\'s Rounds</div>' +
+    renderRoundsTable(state, colorFor) + '</div>';
+
+  const saved = saveGameRecord(state, localMode);
+  html += '<div class="leaderboard-section"><div class="round-label">Leaderboard — Recent Plays Across All Devices</div>' +
     renderLeaderboardHtml(saved.history) +
-    '<div class="actions" style="margin-top:14px;"><button class="btn btn-secondary" id="exportHistoryBtn" type="button">Export Game History</button></div>' +
-    '<p class="map-note">Your game history is saved in this browser only — it won\'t follow you to another device. Ask us about a shared/cloud leaderboard if you\'d like scores visible across devices.</p>' +
+    renderPercentileHtml(me.name, me.totalScore, saved.history) +
+    '<div class="actions" style="margin-top:12px;"><button class="btn btn-secondary" id="exportHistoryBtn" type="button">Export Game History</button></div>' +
     '</div>';
+
+  html += '<div style="margin-top:26px;"><h3>Guesses on the map</h3><div id="mapContainer"></div>' +
+    '<p class="note" id="mapInfo">Click a dot to see the country and its actual population.</p></div>';
 
   html += '<div class="actions" style="margin-top:24px;">' +
     '<button class="btn" id="playAgainBtn">Play Again (Same Players)</button>' +
