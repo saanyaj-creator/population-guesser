@@ -863,15 +863,24 @@
     stateBoundaryRequestId += 1; // invalidates any in-flight fetch from a previous round
     if (stateBoundaryLayer) { map.removeLayer(stateBoundaryLayer); stateBoundaryLayer = null; }
   }
-  function showStateBoundaries(bounds) {
+  // Degree half-width/half-height of the fixed box queried around the
+  // actual city, regardless of how the reveal map itself is framed. Large
+  // enough to cover a country the size of India, the US, or China.
+  const STATE_BOUNDARY_HALF_LAT = 12;
+  const STATE_BOUNDARY_HALF_LNG = 16;
+
+  function showStateBoundaries(centerLat, centerLng) {
     clearStateBoundaries();
     const thisRequestId = stateBoundaryRequestId;
-    const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
-    const latSpan = ne.lat - sw.lat, lngSpan = ne.lng - sw.lng;
-    // A very wide-off guess zooms out to a huge bounding box — state lines
-    // aren't legible at that scale anyway, and it'd mean a much heavier
-    // query, so skip fetching them in that case.
-    if (latSpan > 60 || lngSpan > 90) return;
+    // Centered on the actual answer, not the reveal map's fitBounds view —
+    // a bad guess in a large country (India, US, China) makes fitBounds
+    // zoom out to fit both pins, which used to make the query bounds huge
+    // enough to get skipped entirely and the country's state lines never
+    // loaded. Querying a fixed box around the real city sidesteps that: it
+    // always covers that country's interior no matter how far off the
+    // guess landed or how zoomed-out the reveal view is.
+    const sw = { lat: centerLat - STATE_BOUNDARY_HALF_LAT, lng: centerLng - STATE_BOUNDARY_HALF_LNG };
+    const ne = { lat: centerLat + STATE_BOUNDARY_HALF_LAT, lng: centerLng + STATE_BOUNDARY_HALF_LNG };
     const geometry = encodeURIComponent(JSON.stringify({
       xmin: sw.lng, ymin: sw.lat, xmax: ne.lng, ymax: ne.lat, spatialReference: { wkid: 4326 },
     }));
@@ -896,13 +905,18 @@
     referenceCityMarkers.forEach((m) => map.removeLayer(m));
     referenceCityMarkers = [];
   }
-  function showReferenceCityMarkers(bounds, skipName) {
+  function showReferenceCityMarkers(centerLat, centerLng, skipName) {
     clearReferenceCityMarkers();
-    const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
-    if ((ne.lat - sw.lat) > 60 || (ne.lng - sw.lng) > 90) return; // same reasoning as showStateBoundaries
+    // Same fixed-box-around-the-answer approach as showStateBoundaries, for
+    // the same reason — a wide-off guess in a big country shouldn't make
+    // this silently skip nearby reference cities either.
+    const box = L.latLngBounds(
+      [centerLat - STATE_BOUNDARY_HALF_LAT, centerLng - STATE_BOUNDARY_HALF_LNG],
+      [centerLat + STATE_BOUNDARY_HALF_LAT, centerLng + STATE_BOUNDARY_HALF_LNG],
+    );
     CITIES.forEach(([name, country, lat, lng]) => {
       if (name === skipName) return;
-      if (!bounds.contains([lat, lng])) return;
+      if (!box.contains([lat, lng])) return;
       const marker = L.circleMarker([lat, lng], {
         radius: 4, color: '#e2e8f0', weight: 1, fillColor: '#64748b', fillOpacity: 0.9,
       }).bindTooltip(`${name}, ${country}`, { direction: 'top', offset: [0, -4] });
@@ -1334,8 +1348,8 @@
     gameRounds.push(roundEntry);
     map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
     showBorders(); // always reveal borders once the answer is shown, regardless of difficulty
-    showStateBoundaries(map.getBounds());
-    showReferenceCityMarkers(map.getBounds(), name);
+    showStateBoundaries(lat, lng);
+    showReferenceCityMarkers(lat, lng, name);
 
     renderResultPanel(roundEntry);
     updateHud();
@@ -1755,8 +1769,8 @@
       boundsPoints.push([g.lat, g.lng]);
     });
     map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
-    showStateBoundaries(map.getBounds());
-    showReferenceCityMarkers(map.getBounds(), r.name);
+    showStateBoundaries(r.lat, r.lng);
+    showReferenceCityMarkers(r.lat, r.lng, r.name);
 
     resultCity.textContent = `${r.name}, ${r.country}`;
     const g1 = r.guesses.p1, g2 = r.guesses.p2;

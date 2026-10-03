@@ -375,9 +375,17 @@ function resolveRoundIfNeeded(state) {
 async function advanceIfRevealDone(store, state) {
   if (state.status !== 'revealing') return;
   const activeIds = Object.keys(state.players);
-  const allReady = activeIds.length > 0 && activeIds.every((pid) => state.readyFlags && state.readyFlags[pid]);
+  // Advancing used to require every active player's ready flag to be set,
+  // but two "Next Round" clicks arriving at nearly the same time race on
+  // this same read-modify-write store: each request reads the state before
+  // the other's write lands, so one player's flag could get clobbered and
+  // the room would sit stuck on "waiting for opponent" forever (until the
+  // REVEAL_MAX_MS safety timeout). Advancing as soon as ANY active player
+  // is ready avoids that race entirely and matches what players expect —
+  // one person clicking Next Round should be enough to move on.
+  const anyReady = activeIds.length > 0 && activeIds.some((pid) => state.readyFlags && state.readyFlags[pid]);
   const timedOut = Date.now() >= state.revealUntil;
-  if (!allReady && !timedOut) return;
+  if (!anyReady && !timedOut) return;
   if (state.round >= MAX_ROUNDS) {
     state.status = 'ended';
     await recordToLeaderboard(store, state);
