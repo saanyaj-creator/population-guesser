@@ -47,6 +47,22 @@
   #hud .value .p1 { color: var(--p1); }
   #hud .value .p2 { color: var(--p2); }
 
+  #endGameBtn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 1000;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid #334155;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #endGameBtn:hover { color: var(--text); border-color: var(--danger); }
+
   #prompt {
     position: absolute;
     top: 16px;
@@ -321,6 +337,8 @@
     </div>
   </div>
 </div>
+
+<button id="endGameBtn" type="button">End Game</button>
 
 <div id="playerSwitch" class="player-switch"></div>
 
@@ -909,6 +927,26 @@
   const nextBtn = document.getElementById('nextBtn');
   const overlay = document.getElementById('overlay');
   const playerSwitchEl = document.getElementById('playerSwitch');
+  const endGameBtn = document.getElementById('endGameBtn');
+  // Lets a player bail out of a game in progress at any point rather than
+  // forcing all 5 rounds. Sits behind the overlay (lower z-index) so it's
+  // only visible/clickable during actual gameplay, same trick the HUD uses.
+  // Local modes finish out with whatever rounds have been played so far;
+  // online mode just leaves the room rather than trying to end it for the
+  // other player too.
+  endGameBtn.addEventListener('click', () => {
+    if (!confirm('End this game now and see your results so far?')) return;
+    if (mode === '2p-online') {
+      stopOnlinePolling();
+      onlineRoomId = null;
+      onlinePlayerId = null;
+      renderSetupScreen();
+    } else if (gameRounds.length === 0) {
+      renderSetupScreen(); // nothing played yet this round — just go back
+    } else {
+      finishGame();
+    }
+  });
 
   // ---------------------------------------------------------------------
   // Game state
@@ -1406,7 +1444,7 @@
            <div><span class="dot" style="background:${PLAYER_COLORS.p1}"></span>${play.players[0].name}: <strong>${play.totals.p1.toLocaleString()}</strong></div>
            <div><span class="dot" style="background:${PLAYER_COLORS.p2}"></span>${play.players[1].name}: <strong>${play.totals.p2.toLocaleString()}</strong></div>
          </div>`
-      : `<div class="score-summary"><div><strong style="font-size:26px;color:var(--accent-2)">${play.totals.p1.toLocaleString()}</strong> / ${(MAX_POINTS * ROUNDS).toLocaleString()}</div></div>`;
+      : `<div class="score-summary"><div><strong style="font-size:26px;color:var(--accent-2)">${play.totals.p1.toLocaleString()}</strong> / ${(MAX_POINTS * play.rounds.length).toLocaleString()}</div></div>`;
 
     const percentileHTML = twoPlayer
       ? `<p class="percentile">${percentileLine(play.players[0].name, play.totals.p1, poolBefore)}<br>${percentileLine(play.players[1].name, play.totals.p2, poolBefore)}</p>`
