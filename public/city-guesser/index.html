@@ -1070,7 +1070,7 @@
   // screens the card is a right-hand sidebar, on narrow ones it's at the bottom.
   function revealFitOptions() {
     return window.innerWidth >= 900
-      ? { paddingTopLeft: [80, 90], paddingBottomRight: [440, 60] }
+      ? { paddingTopLeft: [80, 90], paddingBottomRight: [490, 60] }
       : { paddingTopLeft: [40, 90], paddingBottomRight: [40, 330] };
   }
 
@@ -1121,11 +1121,6 @@
   // Wikimedia Commons via Wikipedia, Wikidata), cached per place, and the
   // panel simply shows less if a lookup fails.
   // ---------------------------------------------------------------------
-  const COUNTRY_API_ALIASES = {
-    "Cote d'Ivoire": 'Ivory Coast',
-    'Cabo Verde': 'Cape Verde',
-    'Sao Tome and Principe': 'São Tomé and Príncipe',
-  };
   // Cities whose bare name is ambiguous on Wikipedia.
   const WIKI_TITLE_OVERRIDES = {
     Washington: 'Washington, D.C.',
@@ -1158,29 +1153,66 @@
     Praia: 'Praia',
   };
 
-  const countryInfoCache = new Map();
-  function fetchCountryInfo(country) {
-    if (countryInfoCache.has(country)) return countryInfoCache.get(country);
-    const q = COUNTRY_API_ALIASES[country] || country;
-    const p = fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(q)}?fields=name,capital,capitalInfo,population,region,subregion`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((list) => {
-        if (!Array.isArray(list) || !list.length) return null;
-        const lower = q.toLowerCase();
-        const exact = list.find((c) => c.name && (String(c.name.common).toLowerCase() === lower || String(c.name.official).toLowerCase() === lower));
-        return exact || list[0];
-      })
-      .catch(() => null)
-      .then((info) => { if (!info) countryInfoCache.delete(country); return info; });
-    countryInfoCache.set(country, p);
-    return p;
-  }
-
   async function wikiApi(host, params) {
     const u = new URL(`https://${host}/w/api.php`);
     u.search = new URLSearchParams({ format: 'json', origin: '*', ...params }).toString();
     const res = await fetch(u);
     return res.json();
+  }
+
+  // Country facts (capital + its coordinates, population) come from Wikidata,
+  // reached via the country's Wikipedia article — the same free source as the
+  // city facts, so there's one dependency instead of two. (A dedicated
+  // countries API was tried first but was unreachable from some browsers.)
+  const COUNTRY_WIKI_TITLES = {
+    "Cote d'Ivoire": 'Ivory Coast',
+    'Cabo Verde': 'Cape Verde',
+    'DR Congo': 'Democratic Republic of the Congo',
+    Gambia: 'The Gambia',
+    Bahamas: 'The Bahamas',
+    Georgia: 'Georgia (country)',
+    'Sao Tome and Principe': 'São Tomé and Príncipe',
+  };
+  const wdLatestAmount = (claims) => {
+    let best = null, bestTime = '';
+    (claims || []).forEach((c) => {
+      const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
+      if (!v || v.amount == null) return;
+      const q = c.qualifiers && c.qualifiers.P585 && c.qualifiers.P585[0] && c.qualifiers.P585[0].datavalue;
+      const t = q ? q.value.time : '';
+      if (!best || t >= bestTime) { best = Number(v.amount); bestTime = t; }
+    });
+    return best;
+  };
+  const countryInfoCache = new Map();
+  function fetchCountryInfo(country) {
+    if (countryInfoCache.has(country)) return countryInfoCache.get(country);
+    const p = (async () => {
+      const page = firstPage(await wikiApi('en.wikipedia.org', {
+        action: 'query', redirects: 1, prop: 'pageprops', ppprop: 'wikibase_item', titles: COUNTRY_WIKI_TITLES[country] || country,
+      }));
+      const qid = page && page.pageprops && page.pageprops.wikibase_item;
+      if (!qid) return null;
+      const ent = ((await wikiApi('www.wikidata.org', { action: 'wbgetentities', ids: qid, props: 'claims' })).entities || {})[qid];
+      if (!ent) return null;
+      const info = { name: country, capital: null, capitalInfo: null, population: wdLatestAmount((ent.claims || {}).P1082) };
+      // capital: prefer a current one (no end-date qualifier); first listed otherwise
+      const capClaims = ((ent.claims || {}).P36 || []).filter((c) => c.mainsnak && c.mainsnak.datavalue);
+      const current = capClaims.filter((c) => !(c.qualifiers && c.qualifiers.P582));
+      const cap = (current.find((c) => c.rank === 'preferred') || current[0] || capClaims[0]);
+      const capId = cap && cap.mainsnak.datavalue.value.id;
+      if (capId) {
+        const cj = await wikiApi('www.wikidata.org', { action: 'wbgetentities', ids: capId, props: 'labels|claims', languages: 'en' });
+        const ce = (cj.entities || {})[capId];
+        const label = ce && ce.labels && ce.labels.en && ce.labels.en.value;
+        const coord = ce && ce.claims && ce.claims.P625 && ce.claims.P625[0] && ce.claims.P625[0].mainsnak.datavalue;
+        if (label) info.capital = [label];
+        if (coord) info.capitalInfo = { latlng: [coord.value.latitude, coord.value.longitude] };
+      }
+      return info;
+    })().catch(() => null).then((info) => { if (!info) countryInfoCache.delete(country); return info; });
+    countryInfoCache.set(country, p);
+    return p;
   }
   const firstPage = (j) => (j && j.query && j.query.pages ? Object.values(j.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0))[0] : null);
   const BAD_PHOTO_WORDS = /(map|flag|locator|logo|seal|coat|arms|icon|symbol|emblem|signature|diagram|chart|graph|climate|blank|location|portrait|svg|commons|wiki|stamp|banner|montage|collage)/i;
@@ -1267,13 +1299,14 @@
       }
       if (place && place.population) rows.push([`${escapeHtml(name)} population`, `${Math.round(place.population).toLocaleString()} (city proper, latest figure on Wikidata)`]);
       if (c && c.population) rows.push([`${escapeHtml(country)} population`, c.population.toLocaleString()]);
-      if (c && c.subregion) rows.push(['Region', escapeHtml(c.subregion)]);
       if (place && place.description) rows.push(['Known as', escapeHtml(place.description)]);
       const photos = place && place.photos && place.photos.length
         ? `<div class="photos">${place.photos.map((u) => `<img src="${escapeHtml(u)}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.remove()" />`).join('')}</div>` : '';
-      const blurb = place && place.extract ? `<p class="blurb">${escapeHtml(place.extract)}</p>` : '';
+      // drop pronunciation/alternate-script parentheticals so the blurb reads cleanly
+      const cleanExtract = place && place.extract ? place.extract.replace(/\s*\([^()]*\)/g, '').replace(/\s*\[[^\]]*\]/g, '').replace(/\s{2,}/g, ' ') : '';
+      const blurb = cleanExtract ? `<p class="blurb">${escapeHtml(cleanExtract)}</p>` : '';
       const facts = rows.length ? `<dl class="facts">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` : '';
-      el.innerHTML = `${photos}${blurb}${facts}<div class="credit">Photos and text: Wikipedia and Wikimedia Commons; country data: REST Countries.</div>`;
+      el.innerHTML = `${photos}${blurb}${facts}<div class="credit">Photos and text: Wikipedia and Wikimedia Commons; country data: Wikidata.</div>`;
     });
   }
 
