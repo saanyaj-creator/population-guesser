@@ -136,13 +136,18 @@
     border-radius: 12px;
     padding: 18px 26px;
     width: min(600px, 94vw);
-    max-height: 62vh;
+    max-height: 52vh;
     overflow-y: auto;
     text-align: center;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     display: none;
   }
   #resultPanel.show { display: block; }
+  /* Wide screens: the result/facts card sits on the right so it never covers
+     the reveal (the map is fitted to the space left of it, see revealFitOptions). */
+  @media (min-width: 900px) {
+    #resultPanel { left: auto; right: 16px; bottom: 16px; top: 64px; transform: none; width: 400px; max-height: none; }
+  }
   #placeInfo { margin-top: 14px; padding-top: 12px; border-top: 1px solid #334155; text-align: left; }
   #placeInfo .loading { color: var(--muted); font-size: 12px; text-align: center; }
   #placeInfo .photos { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -1061,6 +1066,14 @@
   }
 
   let capitalMarker = null;
+  // Keeps the reveal (pins + answer) clear of the result card: on wide
+  // screens the card is a right-hand sidebar, on narrow ones it's at the bottom.
+  function revealFitOptions() {
+    return window.innerWidth >= 900
+      ? { paddingTopLeft: [80, 90], paddingBottomRight: [440, 60] }
+      : { paddingTopLeft: [40, 90], paddingBottomRight: [40, 330] };
+  }
+
   function clearReferenceCityMarkers() {
     referenceCityMarkers.forEach((m) => map.removeLayer(m));
     referenceCityMarkers = [];
@@ -1688,7 +1701,7 @@
 
     actualMarker = L.marker([lat, lng], { icon: actualIcon }).addTo(map);
     gameRounds.push(roundEntry);
-    map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
+    map.fitBounds(L.latLngBounds(boundsPoints), { ...revealFitOptions(), maxZoom: 6 });
     showBorders(); // always reveal borders once the answer is shown, regardless of difficulty
     showStateBoundaries(lat, lng);
     showReferenceCityMarkers(lat, lng, name);
@@ -2184,7 +2197,7 @@
       roundLines.push(line);
       boundsPoints.push([g.lat, g.lng]);
     });
-    map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
+    map.fitBounds(L.latLngBounds(boundsPoints), { ...revealFitOptions(), maxZoom: 6 });
     showStateBoundaries(r.lat, r.lng);
     showReferenceCityMarkers(r.lat, r.lng, r.name);
     showCapitalMarker(r.country, r.name);
