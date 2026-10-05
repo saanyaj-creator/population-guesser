@@ -135,12 +135,30 @@
     border: 1px solid #334155;
     border-radius: 12px;
     padding: 18px 26px;
-    width: min(460px, 90vw);
+    width: min(600px, 94vw);
+    max-height: 62vh;
+    overflow-y: auto;
     text-align: center;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     display: none;
   }
   #resultPanel.show { display: block; }
+  #placeInfo { margin-top: 14px; padding-top: 12px; border-top: 1px solid #334155; text-align: left; }
+  #placeInfo .loading { color: var(--muted); font-size: 12px; text-align: center; }
+  #placeInfo .photos { display: flex; gap: 8px; margin-bottom: 10px; }
+  #placeInfo .photos img { flex: 1 1 0; min-width: 0; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid #334155; background: #1e293b; }
+  #placeInfo .blurb { font-size: 13px; line-height: 1.5; color: var(--text); margin: 0 0 8px; }
+  #placeInfo .facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12px; margin: 0; }
+  #placeInfo .facts dt { color: var(--muted); }
+  #placeInfo .facts dd { margin: 0; color: var(--text); }
+  #placeInfo .credit { font-size: 10px; color: var(--muted); margin-top: 6px; }
+  .capital-label span { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); background: rgba(15,23,42,0.85); color: #fde68a; border: 1px solid #f59e0b; border-radius: 6px; padding: 1px 6px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .state-label { pointer-events: none; }
+  .state-label span {
+    position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+    color: #e2e8f0; font-size: 10px; font-weight: 600; font-style: italic; white-space: nowrap; letter-spacing: 0.02em;
+    text-shadow: -1px -1px 0 #0f172a, 1px -1px 0 #0f172a, -1px 1px 0 #0f172a, 1px 1px 0 #0f172a, 0 0 4px #0f172a;
+  }
   #resultPanel h2 { margin: 0 0 4px; font-size: 17px; }
   #resultPanel .distance { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
   #resultPanel .points { font-size: 22px; font-weight: 800; color: var(--accent-2); margin-bottom: 12px; line-height: 1.5; }
@@ -166,28 +184,29 @@
     justify-content: flex-start;
     flex-direction: column;
     text-align: center;
-    padding: 50px 20px 40px;
+    padding: 16px 14px 16px;
     overflow-y: auto;
   }
   #overlay.hidden { display: none; }
   .overlay-inner {
-    width: min(640px, 92vw);
+    width: min(640px, 94vw);
+    margin: auto;
     background: linear-gradient(180deg, rgba(30, 41, 59, 0.65), rgba(30, 41, 59, 0.35));
     border: 1px solid #334155;
-    border-radius: 22px;
-    padding: 38px 34px 30px;
+    border-radius: 20px;
+    padding: 20px 24px 16px;
     box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
   }
-  #overlay h1 { font-size: 42px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  #overlay h1 { font-size: 32px; margin: 0 0 4px; letter-spacing: -0.02em; }
   #overlay h1 span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  #overlay p { color: var(--muted); max-width: 480px; margin: 0 auto 20px; line-height: 1.5; }
+  #overlay p { color: var(--muted); max-width: 520px; margin: 0 auto 12px; line-height: 1.45; font-size: 13px; }
   #overlay button {
     background: var(--accent);
     color: #06202f;
     border: none;
     border-radius: 999px;
-    padding: 16px 44px;
-    font-size: 18px;
+    padding: 11px 34px;
+    font-size: 16px;
     font-weight: 800;
     cursor: pointer;
     box-shadow: 0 6px 24px rgba(56, 189, 248, 0.4);
@@ -209,18 +228,18 @@
     letter-spacing: 0.08em;
     font-weight: 700;
     text-align: left;
-    margin: 0 0 8px 2px;
+    margin: 0 0 5px 2px;
   }
-  .mode-toggle { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; flex-wrap: wrap; }
+  .mode-toggle { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap; }
   .mode-btn {
     background: #1e293b;
     border: 1px solid #334155;
     color: var(--text);
-    padding: 10px 22px;
+    padding: 6px 12px;
     border-radius: 999px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 12px;
     transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
   .mode-btn:hover { transform: translateY(-1px); }
@@ -236,19 +255,18 @@
      so the two groups read as visually distinct choices. */
   .mode-row {
     flex-wrap: nowrap;
-    overflow-x: auto;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
   }
-  .mode-row .mode-btn { padding: 10px 16px; font-size: 13px; white-space: nowrap; }
-  .difficulty-row { margin-bottom: 26px; }
+  .mode-row .mode-btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+  .difficulty-row { margin-bottom: 12px; }
   .diff-btn.active {
     background: var(--accent-3);
     border-color: var(--accent-3);
     box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35);
   }
 
-  #nameInputs { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; flex-wrap: wrap; }
+  #nameInputs { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
   #nameInputs input {
     background: #1e293b;
     border: 1px solid #334155;
@@ -260,7 +278,7 @@
     text-align: center;
   }
 
-  .history-teaser { color: var(--muted); font-size: 13px; margin-top: 22px; }
+  .history-teaser { color: var(--muted); font-size: 12px; margin-top: 10px; }
 
   .winner-line { font-size: 18px; color: var(--accent-2); font-weight: 700; margin: -6px auto 14px; }
   .score-summary { display: flex; gap: 26px; justify-content: center; margin-bottom: 6px; font-size: 15px; }
@@ -269,7 +287,7 @@
   .percentile { color: var(--muted); font-size: 13px; margin: 10px auto 4px; line-height: 1.6; }
 
   #reviewMap {
-    height: 260px;
+    height: 340px;
     width: 100%;
     max-width: 600px;
     border-radius: 10px;
@@ -350,6 +368,7 @@
   <div class="points" id="resultPoints"></div>
   <div class="winner-note" id="autoAdvanceNote" style="display:none;">Next round starts automatically…</div>
   <button id="nextBtn">Next City →</button>
+  <div id="placeInfo"></div>
 </div>
 
 <div id="overlay"></div>
@@ -615,18 +634,62 @@
   // zoom 8, and just letting Leaflet upscale those tiles past that (the
   // previous approach) is genuinely blurry/pixelated at high zoom — not a
   // real fix. So: use World_Physical_Map for the vivid low/overview zooms
-  // (2-8), then switch to World_Terrain_Base — a real, higher-resolution
-  // Esri layer with native tiles up to zoom 13 — for zoom 9 and beyond, so
-  // "zoomed in" actually means real detail instead of a blown-up blur. The
-  // color is more muted at that point (terrain shading rather than the
-  // vivid physical palette), which is a fair tradeoff for genuine sharpness.
+  // (2-8), then switch to Esri World_Imagery (satellite, no labels) for zoom
+  // 9 and beyond. World_Terrain_Base was tried for this slot but it returns
+  // a grey "Map data not available" placeholder tile from about zoom 10 in
+  // many regions; World_Imagery has real photo tiles to ~zoom 17 on land
+  // (verified for the Sahara, Amazon, Siberia, outback, and major cities).
+  // Over open ocean, imagery stops at ~13, so attachZoomCap() below probes
+  // the tile under the map centre and lowers maxZoom there instead of
+  // letting people zoom into the placeholder.
   const TILE_LOW_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}';
-  const TILE_HIGH_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}';
-  const TILE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: US National Park Service';
+  const TILE_HIGH_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  const TILE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics, and the GIS User Community';
   const TILE_LOW_MAX_NATIVE_ZOOM = 8;
   const TILE_SWITCH_ZOOM = 9; // zoom level at which the high-res layer takes over
-  const TILE_HIGH_MAX_NATIVE_ZOOM = 13;
-  const TILE_MAX_ZOOM = 13;
+  const TILE_HIGH_MAX_NATIVE_ZOOM = 17;
+  const TILE_MAX_ZOOM = 17;
+  const TILE_NODATA_FALLBACK_ZOOM = 13; // imagery always exists up to here, even over open water
+  const TILE_PROBE_ZOOM = 14;
+  const TILE_PLACEHOLDER_MAX_BYTES = 3000; // the grey "no data" tile is ~2.5 KB; real photo tiles are far larger
+  const tileProbeCache = new Map();
+
+  async function imageryExistsAt(lat, lng, z) {
+    const n = 2 ** z;
+    const x = Math.floor(((lng + 180) / 360) * n);
+    const latRad = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
+    const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+    const key = `${z}/${x}/${y}`;
+    if (tileProbeCache.has(key)) return tileProbeCache.get(key);
+    let exists = true; // if the probe itself fails, don't restrict zoom
+    try {
+      const res = await fetch(TILE_HIGH_URL.replace('{z}', z).replace('{y}', y).replace('{x}', ((x % n) + n) % n));
+      exists = (await res.arrayBuffer()).byteLength > TILE_PLACEHOLDER_MAX_BYTES;
+    } catch (e) { /* keep default */ }
+    tileProbeCache.set(key, exists);
+    return exists;
+  }
+
+  // Lowers a map's maxZoom to TILE_NODATA_FALLBACK_ZOOM wherever the satellite
+  // layer has no imagery (open ocean, polar ice), and restores it elsewhere,
+  // so people can't zoom in to an empty "Map data not available" tile.
+  function attachZoomCap(m, fullMax) {
+    let seq = 0;
+    async function update() {
+      const mine = ++seq;
+      if (m.getZoom() < TILE_SWITCH_ZOOM + 1) {
+        if (m.getMaxZoom() !== fullMax) m.setMaxZoom(fullMax);
+        return;
+      }
+      const c = m.getCenter();
+      const ok = await imageryExistsAt(c.lat, c.lng, TILE_PROBE_ZOOM);
+      if (mine !== seq) return; // a newer move superseded this probe
+      const cap = ok ? fullMax : TILE_NODATA_FALLBACK_ZOOM;
+      if (m.getMaxZoom() !== cap) m.setMaxZoom(cap);
+    }
+    m.on('moveend', update);
+    update();
+  }
   // Country borders as clean vector lines (no raster labels, no ugly
   // baked-in font) drawn on top of the base map — off by default (Hard
   // mode) so the base map stays unlabeled while guessing, shown at reveal
@@ -745,6 +808,22 @@
   function playScore(p) {
     return p.mode !== '1p' ? Math.max(p.totals.p1 ?? 0, p.totals.p2 ?? 0) : (p.totals.p1 ?? 0);
   }
+  // Individual-score leaderboard: every player's total in every game is its
+  // own row (so a winner and a runner-up from the same game can both appear
+  // if both scores are high enough, and a low score never shows just because
+  // it was the loser's in a game with a high winner).
+  function topScoresFrom(entries, limit) {
+    const rows = [];
+    entries.forEach((p) => {
+      (p.players || []).forEach((pl) => {
+        const score = p.totals ? p.totals[pl.id] : null;
+        if (typeof score !== 'number') return;
+        rows.push({ name: pl.name, score, mode: p.mode, timestamp: p.timestamp, play: p });
+      });
+    });
+    rows.sort((a, b) => b.score - a.score);
+    return rows.slice(0, limit || 10);
+  }
   function topPlaysByScore(entries, limit) {
     return entries.slice().sort((a, b) => playScore(b) - playScore(a)).slice(0, limit || 10);
   }
@@ -775,6 +854,7 @@
   L.tileLayer(TILE_HIGH_URL, {
     attribution: TILE_ATTRIBUTION, minZoom: TILE_SWITCH_ZOOM, maxZoom: TILE_MAX_ZOOM, maxNativeZoom: TILE_HIGH_MAX_NATIVE_ZOOM,
   }).addTo(map);
+  attachZoomCap(map, TILE_MAX_ZOOM);
 
   // Borders overlay — clean vector lines (a "halo": a soft dark line under
   // a thin bright line, so it reads on both light and dark terrain), not a
@@ -797,8 +877,10 @@
   let countryLabelsWanted = false;
   const COUNTRY_LABEL_MIN_ZOOM = 4;
 
-  function buildCountryLabels(data) {
-    if (countryLabelLayer) return countryLabelLayer;
+  // Builds a fresh layer of country-name labels (usable on any map — the
+  // main game map and the end-screen review map each need their own layer
+  // instance since a Leaflet layer can only live on one map at a time).
+  function makeCountryLabels(data) {
     const markers = [];
     data.features.forEach((f) => {
       const name = f.properties && (f.properties.name || f.properties.NAME || f.properties.ADMIN);
@@ -810,7 +892,11 @@
         interactive: false, keyboard: false,
       }));
     });
-    countryLabelLayer = L.layerGroup(markers);
+    return L.layerGroup(markers);
+  }
+  function buildCountryLabels(data) {
+    if (countryLabelLayer) return countryLabelLayer;
+    countryLabelLayer = makeCountryLabels(data);
     return countryLabelLayer;
   }
   function updateCountryLabelVisibility() {
@@ -862,6 +948,7 @@
   function clearStateBoundaries() {
     stateBoundaryRequestId += 1; // invalidates any in-flight fetch from a previous round
     if (stateBoundaryLayer) { map.removeLayer(stateBoundaryLayer); stateBoundaryLayer = null; }
+    clearStateLabels();
   }
   // Degree half-width/half-height of the fixed box queried around the
   // actual city, regardless of how the reveal map itself is framed. Large
@@ -869,41 +956,126 @@
   const STATE_BOUNDARY_HALF_LAT = 12;
   const STATE_BOUNDARY_HALF_LNG = 16;
 
+  // Fetched geometry is cached per city (the end-screen review map reuses
+  // it for free). The un-simplified response for a 24x32 degree box was
+  // ~7.8 MB and ~18 s for Argentina — so slow that state lines effectively
+  // never appeared. maxAllowableOffset (a generalisation tolerance, in
+  // degrees) plus geometryPrecision shrinks that to ~0.4 MB / ~1.3 s with
+  // no visible difference at the zooms where dashed state lines are drawn.
+  const stateDataCache = new Map();
+  function fetchStateBoundaryData(centerLat, centerLng) {
+    const key = `${centerLat.toFixed(2)},${centerLng.toFixed(2)}`;
+    if (stateDataCache.has(key)) return stateDataCache.get(key);
+    const geometry = encodeURIComponent(JSON.stringify({
+      xmin: centerLng - STATE_BOUNDARY_HALF_LNG, ymin: centerLat - STATE_BOUNDARY_HALF_LAT,
+      xmax: centerLng + STATE_BOUNDARY_HALF_LNG, ymax: centerLat + STATE_BOUNDARY_HALF_LAT,
+      spatialReference: { wkid: 4326 },
+    }));
+    const url = `${STATE_BOUNDARY_URL}?geometry=${geometry}&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,COUNTRY,ADMINTYPE&returnGeometry=true&maxAllowableOffset=0.02&geometryPrecision=3&f=geojson`;
+    const p = fetch(url)
+      .then((res) => res.json())
+      .then((data) => (data && data.features && data.features.length ? data : null))
+      .catch(() => null)
+      .then((data) => { if (!data) stateDataCache.delete(key); return data; }); // don't cache failures
+    stateDataCache.set(key, p);
+    return p;
+  }
+
+  function stateLineStyle() {
+    return { color: '#f8fafc', weight: 1.2, opacity: 0.7, fillOpacity: 0, dashArray: '3,5' };
+  }
+
+  // One label per state/province, at the centre of its largest piece (the
+  // service returns multi-part regions, e.g. islands, as separate features).
+  function makeStateLabels(data) {
+    const best = new Map();
+    data.features.forEach((f) => {
+      const p = f.properties || {};
+      if (!p.NAME) return;
+      let b;
+      try { b = L.geoJSON(f).getBounds(); } catch (e) { return; }
+      const area = (b.getNorth() - b.getSouth()) * (b.getEast() - b.getWest());
+      const key = `${p.NAME}|${p.COUNTRY}`;
+      const cur = best.get(key);
+      if (!cur || area > cur.area) best.set(key, { name: p.NAME, area, center: b.getCenter() });
+    });
+    const markers = [];
+    best.forEach((v) => {
+      markers.push(L.marker(v.center, {
+        icon: L.divIcon({ className: 'state-label', html: `<span>${v.name}</span>`, iconSize: [0, 0] }),
+        interactive: false, keyboard: false,
+      }));
+    });
+    return L.layerGroup(markers);
+  }
+
+  // Show `layer` on map `m` only at or above `minZoom` (labels at world
+  // zoom would just be a wall of overlapping text).
+  function toggleLayerByZoom(m, layer, minZoom) {
+    const update = () => {
+      const show = m.getZoom() >= minZoom;
+      const has = m.hasLayer(layer);
+      if (show && !has) layer.addTo(m);
+      if (!show && has) m.removeLayer(layer);
+    };
+    m.on('zoomend', update);
+    update();
+    return update;
+  }
+
+  const STATE_LABEL_MIN_ZOOM = 5;
+  let stateLabelLayer = null;
+  function clearStateLabels() {
+    if (stateLabelLayer) { map.removeLayer(stateLabelLayer); stateLabelLayer = null; }
+  }
+  function updateStateLabelVisibility() {
+    if (!stateLabelLayer) return;
+    const show = map.getZoom() >= STATE_LABEL_MIN_ZOOM;
+    const has = map.hasLayer(stateLabelLayer);
+    if (show && !has) stateLabelLayer.addTo(map);
+    if (!show && has) map.removeLayer(stateLabelLayer);
+  }
+  map.on('zoomend', updateStateLabelVisibility);
+
   function showStateBoundaries(centerLat, centerLng) {
     clearStateBoundaries();
     const thisRequestId = stateBoundaryRequestId;
-    // Centered on the actual answer, not the reveal map's fitBounds view —
-    // a bad guess in a large country (India, US, China) makes fitBounds
-    // zoom out to fit both pins, which used to make the query bounds huge
-    // enough to get skipped entirely and the country's state lines never
-    // loaded. Querying a fixed box around the real city sidesteps that: it
-    // always covers that country's interior no matter how far off the
-    // guess landed or how zoomed-out the reveal view is.
-    const sw = { lat: centerLat - STATE_BOUNDARY_HALF_LAT, lng: centerLng - STATE_BOUNDARY_HALF_LNG };
-    const ne = { lat: centerLat + STATE_BOUNDARY_HALF_LAT, lng: centerLng + STATE_BOUNDARY_HALF_LNG };
-    const geometry = encodeURIComponent(JSON.stringify({
-      xmin: sw.lng, ymin: sw.lat, xmax: ne.lng, ymax: ne.lat, spatialReference: { wkid: 4326 },
-    }));
-    const url = `${STATE_BOUNDARY_URL}?geometry=${geometry}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,COUNTRY,ADMINTYPE&returnGeometry=true&f=geojson`;
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        // The reveal may have already moved on to the next round by the
-        // time this resolves (clearStateBoundaries bumps the request id) —
-        // don't draw a stale layer over a new round.
-        if (thisRequestId !== stateBoundaryRequestId || !data || !data.features || !data.features.length) return;
-        stateBoundaryLayer = L.geoJSON(data, {
-          style: { color: '#f8fafc', weight: 1, opacity: 0.5, fillOpacity: 0, dashArray: '2,5' },
-          interactive: false,
-        }).addTo(map);
-        stateBoundaryLayer.bringToBack();
-      })
-      .catch(() => {}); // best-effort — the reveal is still complete without this layer
+    // Centered on the actual answer, not the reveal map's fitBounds view,
+    // so a bad guess (which zooms the reveal way out) never changes what's
+    // fetched — see the notes on STATE_BOUNDARY_HALF_LAT/LNG above.
+    fetchStateBoundaryData(centerLat, centerLng).then((data) => {
+      // The reveal may have already moved on to the next round by the time
+      // this resolves (clearStateBoundaries bumps the request id) — don't
+      // draw a stale layer over a new round.
+      if (thisRequestId !== stateBoundaryRequestId || !data) return;
+      stateBoundaryLayer = L.geoJSON(data, { style: stateLineStyle(), interactive: false }).addTo(map);
+      stateBoundaryLayer.bringToBack();
+      stateLabelLayer = makeStateLabels(data);
+      updateStateLabelVisibility();
+    });
   }
 
+  let capitalMarker = null;
   function clearReferenceCityMarkers() {
     referenceCityMarkers.forEach((m) => map.removeLayer(m));
     referenceCityMarkers = [];
+    if (capitalMarker) { map.removeLayer(capitalMarker); capitalMarker = null; }
+  }
+
+  // Marks the answer's country capital (when it isn't the answer itself).
+  function showCapitalMarker(country, cityName) {
+    const requestId = stateBoundaryRequestId; // same lifecycle as the boundaries
+    fetchCountryInfo(country).then((info) => {
+      if (requestId !== stateBoundaryRequestId || !info || !info.capital || !info.capital[0]) return;
+      const capName = info.capital[0];
+      const ll = info.capitalInfo && info.capitalInfo.latlng;
+      if (!ll || capName.toLowerCase() === String(cityName).toLowerCase()) return;
+      if (capitalMarker) map.removeLayer(capitalMarker);
+      capitalMarker = L.marker(ll, {
+        icon: L.divIcon({ className: 'capital-label', html: `<span>★ ${capName} (capital)</span>`, iconSize: [0, 0] }),
+        interactive: false, keyboard: false, zIndexOffset: 500,
+      }).addTo(map);
+    });
   }
   function showReferenceCityMarkers(centerLat, centerLng, skipName) {
     clearReferenceCityMarkers();
@@ -922,6 +1094,168 @@
       }).bindTooltip(`${name}, ${country}`, { direction: 'top', offset: [0, -4] });
       marker.addTo(map);
       referenceCityMarkers.push(marker);
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Place facts and photos shown after each reveal. All best-effort: every
+  // source is a free, CORS-enabled public API (REST Countries, Wikipedia,
+  // Wikimedia Commons via Wikipedia, Wikidata), cached per place, and the
+  // panel simply shows less if a lookup fails.
+  // ---------------------------------------------------------------------
+  const COUNTRY_API_ALIASES = {
+    "Cote d'Ivoire": 'Ivory Coast',
+    'Cabo Verde': 'Cape Verde',
+    'Sao Tome and Principe': 'São Tomé and Príncipe',
+  };
+  // Cities whose bare name is ambiguous on Wikipedia.
+  const WIKI_TITLE_OVERRIDES = {
+    Washington: 'Washington, D.C.',
+    Salvador: 'Salvador, Bahia',
+    Victoria: 'Victoria, Seychelles',
+    Georgetown: 'Georgetown, Guyana',
+    Cordoba: 'Córdoba, Argentina',
+    'San Jose': 'San José, Costa Rica',
+    Perth: 'Perth, Western Australia',
+    Phoenix: 'Phoenix, Arizona',
+    Santiago: 'Santiago, Chile',
+    Kingston: 'Kingston, Jamaica',
+    Cali: 'Cali',
+    Naples: 'Naples, Italy',
+    Hamburg: 'Hamburg',
+    Doha: 'Doha',
+    Asuncion: 'Asunción',
+    Medellin: 'Medellín',
+    Bogota: 'Bogotá',
+    Brasilia: 'Brasília',
+    'Sao Paulo': 'São Paulo',
+    Yaounde: 'Yaoundé',
+    Lome: 'Lomé',
+    Lagos: 'Lagos',
+    Nassau: 'Nassau, Bahamas',
+    Manama: 'Manama',
+    Monrovia: 'Monrovia',
+    Kyiv: 'Kyiv',
+    Moroni: 'Moroni, Comoros',
+    Praia: 'Praia',
+  };
+
+  const countryInfoCache = new Map();
+  function fetchCountryInfo(country) {
+    if (countryInfoCache.has(country)) return countryInfoCache.get(country);
+    const q = COUNTRY_API_ALIASES[country] || country;
+    const p = fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(q)}?fields=name,capital,capitalInfo,population,region,subregion`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list) => {
+        if (!Array.isArray(list) || !list.length) return null;
+        const lower = q.toLowerCase();
+        const exact = list.find((c) => c.name && (String(c.name.common).toLowerCase() === lower || String(c.name.official).toLowerCase() === lower));
+        return exact || list[0];
+      })
+      .catch(() => null)
+      .then((info) => { if (!info) countryInfoCache.delete(country); return info; });
+    countryInfoCache.set(country, p);
+    return p;
+  }
+
+  async function wikiApi(host, params) {
+    const u = new URL(`https://${host}/w/api.php`);
+    u.search = new URLSearchParams({ format: 'json', origin: '*', ...params }).toString();
+    const res = await fetch(u);
+    return res.json();
+  }
+  const firstPage = (j) => (j && j.query && j.query.pages ? Object.values(j.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0))[0] : null);
+  const BAD_PHOTO_WORDS = /(map|flag|locator|logo|seal|coat|arms|icon|symbol|emblem|signature|diagram|chart|graph|climate|blank|location|portrait|svg|commons|wiki|stamp|banner|montage|collage)/i;
+
+  const placeInfoCache = new Map();
+  function fetchPlaceInfo(name, country) {
+    const key = `${name}|${country}`;
+    if (placeInfoCache.has(key)) return placeInfoCache.get(key);
+    const p = (async () => {
+      const info = { title: null, description: null, extract: null, photos: [], population: null };
+      const base = {
+        action: 'query', redirects: 1, prop: 'extracts|pageprops|description', exintro: 1, explaintext: 1,
+        exsentences: 3, ppprop: 'wikibase_item|disambiguation',
+      };
+      let page = firstPage(await wikiApi('en.wikipedia.org', { ...base, titles: WIKI_TITLE_OVERRIDES[name] || name }));
+      const bad = !page || page.missing !== undefined || (page.pageprops && page.pageprops.disambiguation !== undefined);
+      if (bad) page = firstPage(await wikiApi('en.wikipedia.org', { ...base, generator: 'search', gsrsearch: `${name} ${country}`, gsrlimit: 1 }));
+      if (!page || page.missing !== undefined) return info;
+      info.title = page.title;
+      info.description = page.description || null;
+      info.extract = page.extract || null;
+      const qid = page.pageprops && page.pageprops.wikibase_item;
+
+      const photosP = (async () => {
+        const imgs = await wikiApi('en.wikipedia.org', { action: 'query', prop: 'images', titles: page.title, imlimit: 60 });
+        const list = ((firstPage(imgs) || {}).images || []).map((i) => i.title)
+          .filter((t) => /\.jpe?g$/i.test(t) && !BAD_PHOTO_WORDS.test(t.replace(/^File:/, '')))
+          .slice(0, 10);
+        if (!list.length) return [];
+        const ii = await wikiApi('en.wikipedia.org', {
+          action: 'query', prop: 'imageinfo', titles: list.join('|'), iiprop: 'url|size', iiurlwidth: 420,
+        });
+        const byTitle = Object.values((ii.query && ii.query.pages) || {});
+        // keep the article's own ordering (lead images first)
+        return list.map((t) => byTitle.find((pg) => pg.title === t))
+          .filter((pg) => pg && pg.imageinfo && pg.imageinfo[0] && pg.imageinfo[0].thumburl && pg.imageinfo[0].width >= 500)
+          .slice(0, 3).map((pg) => pg.imageinfo[0].thumburl);
+      })().catch(() => []);
+
+      const popP = (async () => {
+        if (!qid) return null;
+        const j = await wikiApi('www.wikidata.org', { action: 'wbgetentities', ids: qid, props: 'claims' });
+        const claims = (((j.entities || {})[qid] || {}).claims || {}).P1082 || [];
+        let best = null, bestTime = '';
+        claims.forEach((c) => {
+          const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
+          if (!v || v.amount == null) return;
+          const q = c.qualifiers && c.qualifiers.P585 && c.qualifiers.P585[0] && c.qualifiers.P585[0].datavalue;
+          const t = q ? q.value.time : '';
+          if (!best || t >= bestTime) { best = Number(v.amount); bestTime = t; }
+        });
+        return best;
+      })().catch(() => null);
+
+      [info.photos, info.population] = await Promise.all([photosP, popP]);
+      return info;
+    })().catch(() => null).then((info) => { if (!info) placeInfoCache.delete(key); return info; });
+    placeInfoCache.set(key, p);
+    return p;
+  }
+
+  let placeInfoToken = 0;
+  function clearPlaceInfo() {
+    placeInfoToken += 1;
+    const el = document.getElementById('placeInfo');
+    if (el) el.innerHTML = '';
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+  function renderPlaceInfo(name, country) {
+    const el = document.getElementById('placeInfo');
+    if (!el) return;
+    const token = ++placeInfoToken;
+    el.innerHTML = '<div class="loading">Loading photos and facts…</div>';
+    Promise.all([fetchPlaceInfo(name, country), fetchCountryInfo(country)]).then(([place, c]) => {
+      if (token !== placeInfoToken) return; // moved on to another round
+      if (!place && !c) { el.innerHTML = ''; return; }
+      const rows = [];
+      const capital = c && c.capital && c.capital[0];
+      if (capital) {
+        const isCap = capital.toLowerCase() === name.toLowerCase();
+        rows.push(['Capital', isCap ? `${escapeHtml(name)} — the capital of ${escapeHtml(country)}` : escapeHtml(capital)]);
+      }
+      if (place && place.population) rows.push([`${escapeHtml(name)} population`, `${Math.round(place.population).toLocaleString()} (city proper, latest figure on Wikidata)`]);
+      if (c && c.population) rows.push([`${escapeHtml(country)} population`, c.population.toLocaleString()]);
+      if (c && c.subregion) rows.push(['Region', escapeHtml(c.subregion)]);
+      if (place && place.description) rows.push(['Known as', escapeHtml(place.description)]);
+      const photos = place && place.photos && place.photos.length
+        ? `<div class="photos">${place.photos.map((u) => `<img src="${escapeHtml(u)}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.remove()" />`).join('')}</div>` : '';
+      const blurb = place && place.extract ? `<p class="blurb">${escapeHtml(place.extract)}</p>` : '';
+      const facts = rows.length ? `<dl class="facts">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` : '';
+      el.innerHTML = `${photos}${blurb}${facts}<div class="credit">Photos and text: Wikipedia and Wikimedia Commons; country data: REST Countries.</div>`;
     });
   }
 
@@ -993,6 +1327,8 @@
   let onlineGuessLatLng = null;
   let onlineRoundResults = [];
   let onlineReadyClicked = false; // this device already clicked "Next Round" and is waiting on the other player
+  let onlineGameNo = 1; // which game in this room we're on (bumped by the server on each rematch)
+  let onlineRematchTimer = null; // polls the room from the end screen so a rematch started by the other player pulls us in too
   // True when this tab was opened via a shared invite link (?room=CODE) —
   // shows a minimal "enter your name and join" screen instead of the full
   // mode-selection start page, since the mode/room are already decided by
@@ -1206,6 +1542,7 @@
       : 'Click anywhere on the map to drop your pin';
     roundValueEl.textContent = `${roundIndex + 1} / ${ROUNDS}`;
     resultPanel.classList.remove('show');
+    clearPlaceInfo();
     autoAdvanceNote.style.display = 'none';
     nextBtn.style.display = '';
 
@@ -1350,6 +1687,7 @@
     showBorders(); // always reveal borders once the answer is shown, regardless of difficulty
     showStateBoundaries(lat, lng);
     showReferenceCityMarkers(lat, lng, name);
+    showCapitalMarker(country, name);
 
     renderResultPanel(roundEntry);
     updateHud();
@@ -1373,6 +1711,7 @@
       resultPoints.innerHTML = `<span style="color:${PLAYER_COLORS.p1}">+${g1.points.toLocaleString()}</span> &nbsp;·&nbsp; <span style="color:${PLAYER_COLORS.p2}">+${g2.points.toLocaleString()}</span><br><span class="winner-note">${winner}</span>`;
     }
     resultPanel.classList.add('show');
+    renderPlaceInfo(roundEntry.name, roundEntry.country);
   }
 
   nextBtn.addEventListener('click', () => {
@@ -1436,7 +1775,7 @@
     const poolBefore = scorePoolFrom(priorEntries);
     const posted = await postPlay(play);
     const allEntries = posted ? priorEntries.concat([play]) : loadHistoryLocal();
-    renderEndScreen(play, poolBefore, topPlaysByScore(allEntries, 10));
+    renderEndScreen(play, poolBefore, topScoresFrom(allEntries, 10));
   }
 
   function percentileLine(label, score, pool) {
@@ -1467,20 +1806,21 @@
     const roundTableHeader = !twoPlayer
       ? `<tr><th>#</th><th>City</th><th>Distance</th><th>Points</th></tr>`
       : `<tr><th>#</th><th>City</th><th>${play.players[0].name}</th><th>${play.players[1].name}</th></tr>`;
+    const kmText = (g) => (g && g.distanceKm != null ? `${g.distanceKm.toFixed(1)} km` : 'no guess');
+    const ptsText = (g) => (g && g.points != null ? g.points.toLocaleString() : '0');
     const roundRows = play.rounds.map((r, i) => {
       if (!twoPlayer) {
-        return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${r.guesses.p1.distanceKm.toFixed(1)} km</td><td>${r.guesses.p1.points.toLocaleString()}</td></tr>`;
+        return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${kmText(r.guesses.p1)}</td><td>${ptsText(r.guesses.p1)}</td></tr>`;
       }
-      return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${r.guesses.p1.distanceKm.toFixed(1)} km / ${r.guesses.p1.points.toLocaleString()}</td><td>${r.guesses.p2.distanceKm.toFixed(1)} km / ${r.guesses.p2.points.toLocaleString()}</td></tr>`;
+      return `<tr><td>${i + 1}</td><td>${r.name}, ${r.country}</td><td>${kmText(r.guesses.p1)} / ${ptsText(r.guesses.p1)}</td><td>${kmText(r.guesses.p2)} / ${ptsText(r.guesses.p2)}</td></tr>`;
     }).join('');
 
-    const leaderboardRows = topPlays.map((p, i) => {
-      const date = new Date(p.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      const modeLabel = p.mode === '1p' ? '1P' : p.mode === '2p-online' ? '2P online' : '2P';
-      const scoreText = p.mode !== '1p'
-        ? `<span style="color:${PLAYER_COLORS.p1}">${p.players[0].name} ${p.totals.p1.toLocaleString()}</span> vs <span style="color:${PLAYER_COLORS.p2}">${p.players[1] ? p.players[1].name : '?'} ${(p.totals.p2 ?? 0).toLocaleString()}</span>`
-        : `${p.totals.p1.toLocaleString()}`;
-      return `<tr class="${isCurrent(p) ? 'current-play' : ''}"><td>#${i + 1}</td><td>${date}</td><td>${modeLabel}</td><td>${scoreText}</td></tr>`;
+    // topPlays here is a list of individual-score rows (see topScoresFrom):
+    // one row per person, not one per game.
+    const leaderboardRows = topPlays.map((row, i) => {
+      const date = new Date(row.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const modeLabel = row.mode === '1p' ? '1P' : row.mode === '2p-online' ? '2P online' : '2P';
+      return `<tr class="${isCurrent(row.play) ? 'current-play' : ''}"><td>#${i + 1}</td><td>${escapeHtml(row.name)}</td><td>${row.score.toLocaleString()}</td><td>${modeLabel}</td><td>${date}</td></tr>`;
     }).join('');
 
     overlay.innerHTML = `
@@ -1494,13 +1834,14 @@
           <thead>${roundTableHeader}</thead>
           <tbody>${roundRows}</tbody>
         </table>
-        <div class="section-title">Leaderboard — best scores of all time</div>
+        <div class="section-title">Leaderboard — best individual scores of all time</div>
         <table class="summary-table">
-          <thead><tr><th>#</th><th>Date</th><th>Mode</th><th>Score</th></tr></thead>
+          <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Mode</th><th>Date</th></tr></thead>
           <tbody>${leaderboardRows}</tbody>
         </table>
         <div class="end-actions">
           <button id="startBtn">Play Again</button>
+          <button id="menuBtn" class="ghost-btn">Main menu</button>
           <button id="clearHistoryBtn" class="ghost-btn">Clear local backup</button>
         </div>
       </div>
@@ -1509,7 +1850,13 @@
 
     requestAnimationFrame(() => renderReviewMap(play));
 
-    document.getElementById('startBtn').addEventListener('click', renderSetupScreen);
+    // Play Again restarts immediately with the same players, mode and
+    // difficulty (no trip back through the home screen).
+    document.getElementById('startBtn').addEventListener('click', () => {
+      if (play.mode === '2p-online') requestOnlineRematch();
+      else startGame();
+    });
+    document.getElementById('menuBtn').addEventListener('click', renderSetupScreen);
     document.getElementById('clearHistoryBtn').addEventListener('click', () => {
       if (confirm("This clears the offline copy of your history stored in this browser (used only as a fallback when the shared leaderboard can't be reached). It won't affect the shared leaderboard other devices see. Continue?")) {
         localStorage.removeItem(STORAGE_KEY);
@@ -1528,10 +1875,28 @@
     }).setView([20, 0], 1);
     L.tileLayer(TILE_LOW_URL, { minZoom: 1, maxZoom: TILE_SWITCH_ZOOM - 1, maxNativeZoom: TILE_LOW_MAX_NATIVE_ZOOM }).addTo(reviewMapInstance);
     L.tileLayer(TILE_HIGH_URL, { minZoom: TILE_SWITCH_ZOOM, maxZoom: TILE_MAX_ZOOM, maxNativeZoom: TILE_HIGH_MAX_NATIVE_ZOOM }).addTo(reviewMapInstance);
+    attachZoomCap(reviewMapInstance, TILE_MAX_ZOOM);
+    const rm = reviewMapInstance;
+    // Country borders + country names (names appear once zoomed in a bit)
     loadBordersGeoJson().then((data) => {
-      if (!data || !reviewMapInstance) return;
-      L.geoJSON(data, { style: { color: '#0f172a', weight: 3, opacity: 0.5, fillOpacity: 0 }, interactive: false }).addTo(reviewMapInstance);
-      L.geoJSON(data, { style: { color: '#f8fafc', weight: 1, opacity: 0.9, fillOpacity: 0 }, interactive: false }).addTo(reviewMapInstance);
+      if (!data || reviewMapInstance !== rm) return;
+      L.geoJSON(data, { style: { color: '#0f172a', weight: 3, opacity: 0.5, fillOpacity: 0 }, interactive: false }).addTo(rm);
+      L.geoJSON(data, { style: { color: '#f8fafc', weight: 1, opacity: 0.9, fillOpacity: 0 }, interactive: false }).addTo(rm);
+      toggleLayerByZoom(rm, makeCountryLabels(data), COUNTRY_LABEL_MIN_ZOOM - 1);
+    });
+    // State/province lines + names around each round's city (cached from the
+    // reveals earlier in the game, so these usually load instantly)
+    const seenCities = new Set();
+    play.rounds.forEach((r) => {
+      const key = `${r.lat.toFixed(2)},${r.lng.toFixed(2)}`;
+      if (seenCities.has(key)) return;
+      seenCities.add(key);
+      fetchStateBoundaryData(r.lat, r.lng).then((data) => {
+        if (!data || reviewMapInstance !== rm) return;
+        const lines = L.geoJSON(data, { style: stateLineStyle(), interactive: false }).addTo(rm);
+        lines.bringToBack();
+        toggleLayerByZoom(rm, makeStateLabels(data), STATE_LABEL_MIN_ZOOM);
+      });
     });
 
     const bounds = [];
@@ -1649,6 +2014,51 @@
     if (onlinePollTimer) { clearInterval(onlinePollTimer); onlinePollTimer = null; }
     if (onlineCountdownTimer) { clearInterval(onlineCountdownTimer); onlineCountdownTimer = null; }
     onlineRoundDeadline = null;
+    stopRematchWatcher();
+  }
+
+  // ---- Online "Play Again": restart the same room with the same two players
+  function stopRematchWatcher() {
+    if (onlineRematchTimer) { clearInterval(onlineRematchTimer); onlineRematchTimer = null; }
+  }
+  function startRematchWatcher() {
+    stopRematchWatcher();
+    onlineRematchTimer = setInterval(async () => {
+      if (!onlineRoomId) { stopRematchWatcher(); return; }
+      try {
+        const res = await fetch(`${FN_ROOM}?action=state&roomId=${onlineRoomId}`);
+        const data = await res.json();
+        if (res.ok && (data.state.gameNo || 1) > onlineGameNo) adoptRematchState(data.state);
+      } catch (e) { /* try again next tick */ }
+    }, 2000);
+  }
+  function adoptRematchState(state) {
+    stopRematchWatcher();
+    onlineGameNo = state.gameNo || 1;
+    onlineRoundResults = [];
+    onlineRenderKey = null;
+    onlineAnswered = false;
+    onlineGuessLatLng = null;
+    onlineReadyClicked = false;
+    totals = { p1: 0, p2: 0 };
+    overlay.classList.add('hidden');
+    startOnlinePolling();
+    handleOnlineState(state);
+  }
+  async function requestOnlineRematch() {
+    const btn = document.getElementById('startBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+    try {
+      const res = await fetch(FN_ROOM, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rematch', roomId: onlineRoomId, playerId: onlinePlayerId, fromGameNo: onlineGameNo }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not start a rematch.');
+      adoptRematchState(data.state);
+    } catch (e) {
+      renderSetupScreen(); // room is gone — fall back to the menu
+    }
   }
 
   async function pollOnlineState() {
@@ -1709,6 +2119,7 @@
     onlineGuessLatLng = null;
     onlineReadyClicked = false;
     resultPanel.classList.remove('show');
+    clearPlaceInfo();
     playerSwitchEl.style.display = 'none';
     playerSwitchEl.innerHTML = '';
 
@@ -1771,6 +2182,7 @@
     map.fitBounds(L.latLngBounds(boundsPoints), { padding: [80, 80], maxZoom: 6 });
     showStateBoundaries(r.lat, r.lng);
     showReferenceCityMarkers(r.lat, r.lng, r.name);
+    showCapitalMarker(r.country, r.name);
 
     resultCity.textContent = `${r.name}, ${r.country}`;
     const g1 = r.guesses.p1, g2 = r.guesses.p2;
@@ -1783,11 +2195,14 @@
     nextBtn.disabled = false;
     nextBtn.textContent = 'Next Round →';
     resultPanel.classList.add('show');
+    renderPlaceInfo(r.name, r.country);
     updateHud();
   }
 
   async function finishOnlineGame(state) {
     resultPanel.classList.remove('show');
+    onlineGameNo = state.gameNo || 1;
+    startRematchWatcher(); // so if the other player hits Play Again first, we're pulled into the new game
     const p1 = state.players.p1, p2 = state.players.p2;
     const winner = p1.totalScore > p2.totalScore ? 'p1' : p2.totalScore > p1.totalScore ? 'p2' : 'tie';
     const roomIdForMatch = onlineRoomId;
@@ -1804,9 +2219,11 @@
     playerNames.p2 = p2.name;
 
     const allEntries = await fetchLeaderboardEntries(500);
-    const isThisGame = (p) => typeof p.id === 'string' && p.id.startsWith(`${roomIdForMatch}-`);
+    // A room can host several games now (rematches), so only the one just
+    // recorded (within the last couple of minutes) counts as "this game".
+    const isThisGame = (p) => typeof p.id === 'string' && p.id.startsWith(`${roomIdForMatch}-`) && (Date.now() - Date.parse(p.timestamp)) < 120000;
     const poolBefore = scorePoolFrom(allEntries.filter((p) => !isThisGame(p)));
-    const topPlays = topPlaysByScore(allEntries, 10);
+    const topPlays = topScoresFrom(allEntries, 10);
 
     renderEndScreen(play, poolBefore, topPlays, isThisGame);
   }

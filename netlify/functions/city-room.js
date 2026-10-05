@@ -411,6 +411,7 @@ function publicState(state) {
     lastRoundResult: state.lastRoundResult,
     answeredFlags: Object.fromEntries(Object.keys(state.players).map((pid) => [pid, pid in (state.roundAnswers || {})])),
     readyFlags: state.readyFlags || {},
+    gameNo: state.gameNo || 1,
   };
 }
 
@@ -525,6 +526,35 @@ export default async (req, context) => {
       }
       await advanceIfRevealDone(store, state);
       await store.setJSON(roomId, state);
+      return json({ state: publicState(state) });
+    }
+
+    if (action === 'rematch') {
+      // "Play Again" from the end screen: reset this same room (same two
+      // players) into a fresh game instead of sending everyone back to the
+      // menu. fromGameNo makes it idempotent — whichever player clicks first
+      // resets the room and bumps gameNo; the other player's later click (or
+      // their end-screen watcher noticing the higher gameNo) just joins it.
+      const roomId = String(body.roomId || '').toUpperCase().trim();
+      const playerId = String(body.playerId || '');
+      const fromGameNo = Number(body.fromGameNo) || 1;
+      const state = await store.get(roomId, { type: 'json' });
+      if (!state) return json({ error: 'Room not found.' }, 404);
+      if (!(playerId in state.players)) return json({ error: 'Unknown player.' }, 400);
+      if (state.status === 'ended' && (state.gameNo || 1) === fromGameNo) {
+        state.gameNo = fromGameNo + 1;
+        state.createdAt = Date.now(); // keep the room alive for another full TTL
+        state.order = shuffle(CITIES.map((_, i) => i));
+        state.round = 0;
+        state.current = null;
+        state.roundAnswers = {};
+        state.history = [];
+        state.lastRoundResult = null;
+        state.readyFlags = {};
+        Object.keys(state.players).forEach((pid) => { state.players[pid].totalScore = 0; });
+        startRound(state);
+        await store.setJSON(roomId, state);
+      }
       return json({ state: publicState(state) });
     }
 
