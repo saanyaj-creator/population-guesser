@@ -231,7 +231,10 @@
     margin: 0 0 5px 2px;
   }
   .mode-toggle { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .mode-btn {
+  /* "#overlay" prefix on purpose: the generic "#overlay button" rule (the big
+     cyan call-to-action style) has ID specificity and used to override these
+     classes, which made every mode/difficulty button look selected. */
+  #overlay .mode-btn {
     background: #1e293b;
     border: 1px solid #334155;
     color: var(--text);
@@ -240,10 +243,11 @@
     cursor: pointer;
     font-weight: 600;
     font-size: 12px;
+    box-shadow: none;
     transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
-  .mode-btn:hover { transform: translateY(-1px); }
-  .mode-btn.active {
+  #overlay .mode-btn:hover { transform: translateY(-1px); border-color: #64748b; }
+  #overlay .mode-btn.active {
     background: var(--accent);
     color: #06202f;
     border-color: var(--accent);
@@ -258,9 +262,10 @@
     justify-content: center;
     gap: 6px;
   }
-  .mode-row .mode-btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+  #overlay .mode-row .mode-btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
   .difficulty-row { margin-bottom: 12px; }
-  .diff-btn.active {
+  #overlay .diff-btn.active {
+    color: #2a1700;
     background: var(--accent-3);
     border-color: var(--accent-3);
     box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35);
